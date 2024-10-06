@@ -3,43 +3,43 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-char piece_to_letter(struct piece piece) {
-	char letter = '-';
+char piece_to_char(struct piece piece) {
+	char c = '-';
 	switch (piece.type) {
 		case PAWN:
-			letter = 'P';
+			c = 'P';
 			break;
 		case KNIGHT:
-			letter = 'N';
+			c = 'N';
 			break;
 		case BISHOP:
-			letter = 'B';
+			c = 'B';
 			break;
 		case ROOK:
-			letter = 'R';
+			c = 'R';
 			break;
 		case QUEEN:
-			letter = 'Q';
+			c = 'Q';
 			break;
 		case KING:
-			letter = 'K';
+			c = 'K';
 			break;
 		default:
-			return letter;
+			return c;
 	}
 	if (piece.color == BLACK) {
-		letter = letter + 'a' - 'A';
+		c = c + 'a' - 'A';
 	}
-	return letter;
+	return c;
 }
 
-struct piece letter_to_piece(char letter) {
+struct piece char_to_piece(char c) {
 	struct piece piece = {NONE, WHITE};
-	if (letter >= 'a' && letter <= 'z') {
+	if (c >= 'a' && c <= 'z') {
 		piece.color = BLACK;
-		letter = letter - 'a' + 'A';
+		c = c - 'a' + 'A';
 	}
-	switch (letter) {
+	switch (c) {
 		case 'P':
 			piece.type = PAWN;
 			break;
@@ -62,11 +62,11 @@ struct piece letter_to_piece(char letter) {
 	return piece;
 }
 
-char rank_to_letter(uint8_t rank) {
-	return '0' + (CHESS_BOARD_HEIGHT - rank);
+char rank_to_char(uint8_t rank) {
+	return '1' + rank;
 }
 
-char file_to_letter(uint8_t file) {
+char file_to_char(uint8_t file) {
 	return 'a' + file;
 }
 
@@ -118,8 +118,8 @@ static int8_t sign(int8_t x) {
 	return 0;
 }
 
-static struct position get_direction(struct position from, struct position to) {
-	struct position delta = {to.x - from.x, to.y - from.y};
+static position get_direction(position from, position to) {
+	position delta = {to.x - from.x, to.y - from.y};
 	// no direction if the positions are the same
 	if (delta.x == 0 && delta.y == 0) goto none;
 	// invalid if positions are not on the same rank, file, or diagonal
@@ -135,21 +135,29 @@ none:
 	return delta;
 }
 
-bool position_equal(struct position a, struct position b) {
+bool position_equal(position a, position b) {
 	return a.x == b.x && a.y == b.y;
 }
 
-bool position_valid(struct position pos) {
-	return pos.x >= 0 && pos.x < CHESS_BOARD_WIDTH && pos.y >= 0 && pos.y < CHESS_BOARD_HEIGHT;
+bool position_valid_xy(int8_t x, int8_t y) {
+	return x >= 0 && x < CHESS_BOARD_WIDTH && y >= 0 && y < CHESS_BOARD_HEIGHT;
 }
 
-struct piece *get_piece(struct game *game, struct position pos) {
-	if (!position_valid(pos)) return NULL;
-	return &game->board[pos.y][pos.x];
+bool position_valid(position pos) {
+	return position_valid_xy(pos.x, pos.y);
 }
 
-bool loop_pieces_between(struct game *game, struct position from, struct position to, bool (*callback)(struct position, void *), void *data) {
-	struct position direction = get_direction(from, to);
+struct piece *get_piece_xy(struct game *game, int8_t x, int8_t y) {
+	if (!position_valid_xy(x, y)) return NULL;
+	return &game->board[y][x];
+}
+
+struct piece *get_piece(struct game *game, position pos) {
+	return get_piece_xy(game, pos.x, pos.y);
+}
+
+bool loop_pieces_between(position from, position to, bool (*callback)(position, void *), void *data) {
+	position direction = get_direction(from, to);
 	if (direction.x == 0 && direction.y == 0) return false;
 	while (!position_equal(from, to)) {
 		from.x += direction.x;
@@ -160,10 +168,10 @@ bool loop_pieces_between(struct game *game, struct position from, struct positio
 	return true;
 }
 
-bool loop_board(struct game *game, bool (*callback)(struct position, void *), void *data) {
+bool loop_board(bool (*callback)(position, void *), void *data) {
 	for (uint8_t y = 0; y < CHESS_BOARD_HEIGHT; y++) {
 		for (uint8_t x = 0; x < CHESS_BOARD_WIDTH; x++) {
-			if (!callback((struct position){x, y}, data)) return false;
+			if (!callback(POS(x, y), data)) return false;
 		}
 	}
 	return true;
@@ -175,25 +183,26 @@ struct move_state_data {
 	enum color player;
 };
 
-static bool get_move_state_callback(struct position pos, struct piece *piece, void *data) {
+static bool get_move_state_callback(position pos, void *data_) {
+	struct move_state_data data = *(struct move_state_data *) data_;
+	struct piece *piece = get_piece(data.game, pos);
 	if (piece->type == NONE) return true;
-	struct move_state_data move_data = *(struct move_state_data *) data;
-	struct move_list *moves = get_legal_moves(move_data.game, pos);
-	if (piece->color == move_data.player) {
+	struct move_list *moves = get_legal_moves(data.game, pos);
+	if (piece->color == data.player) {
 		if (moves) {
 			// if the player has any legal moves, the game is not in stalemate
-			move_data.state->stalemate = false;
-			if (move_data.state->check) return false; // nothing else to change, exit early
+			data.state->stalemate = false;
+			if (data.state->check) return false; // nothing else to change, exit early
 		}
 	} else {
 		// check if the player is in check
 		for (struct move_list *move = moves; move; move = move->next) {
-			struct piece *to = &move_data.game->board[move->move.to.y][move->move.to.x];
-			if (to->color != move_data.player) continue;
+			struct piece *to = &data.game->board[move->move.to.y][move->move.to.x];
+			if (to->color != data.player) continue;
 			if (to->type != KING) continue;
 			// if the opponent can take the player's king, the player is in check
-			move_data.state->check = true;
-			if (!move_data.state->stalemate) return false; // nothing else to change, exit early
+			data.state->check = true;
+			if (!data.state->stalemate) return false; // nothing else to change, exit early
 		}
 	}
 	return true;
@@ -203,7 +212,7 @@ struct move_state get_move_state(struct game *game, enum color player) {
 	// set the default state to stalemate
 	struct move_state state = {.stalemate = true, .check = false};
 	struct move_state_data data = {game, &state, player};
-	loop_board(game, get_move_state_callback, &data);
+	loop_board(get_move_state_callback, &data);
 	return state;
 }
 
@@ -229,30 +238,27 @@ void add_move(struct game *game, struct move_list *list, struct move move) {
 	list = new; // move the list pointer to the new node
 }
 
-static void search_moves(struct game *game, struct move_list *list, struct position pos, bool cardinal, bool diagonal, uint8_t max_length) {
+static void search_moves(struct game *game, struct move_list *list, position pos, bool cardinal, bool diagonal, uint8_t max_length) {
 	// combine arrays into one
-	struct position directions[8];
+	position directions[8];
 	memset(directions, 0, sizeof(directions));
-	if (cardinal) memcpy(directions, (struct position[4]){
-
-		                                     {0,  1 },
-		                                     {1,  0 },
-		                                     {0,  -1},
-		                                     {-1, 0 }
- },
-		                 sizeof(struct position) * 4);
-	if (diagonal) memcpy(directions + 4, (struct position[4]){
-		                                         {1,  1 },
-		                                         {1,  -1},
-		                                         {-1, -1},
-		                                         {-1, 1 }
- },
-		                 sizeof(struct position) * 4);
+	if (cardinal) {
+		directions[0] = POS(0, 1);
+		directions[1] = POS(1, 0);
+		directions[2] = POS(0, -1);
+		directions[3] = POS(-1, 0);
+	}
+	if (diagonal) {
+		directions[4] = POS(1, 1);
+		directions[5] = POS(1, -1);
+		directions[6] = POS(-1, -1);
+		directions[7] = POS(-1, 1);
+	}
 	// loop all directions
 	for (uint8_t i = 0; i < sizeof(directions) / sizeof(directions[0]); ++i) {
-		struct position direction = directions[i];
+		position direction = directions[i];
 		if (direction.x == 0 && direction.y == 0) continue;
-		struct position new_pos = pos;
+		position new_pos = pos;
 		for (uint8_t distance = 0; max_length == 0 || distance < max_length; ++distance) {
 			new_pos.x += direction.x;
 			new_pos.y += direction.y;
@@ -273,17 +279,49 @@ static void search_moves(struct game *game, struct move_list *list, struct posit
 	}
 }
 
-struct move_list *get_legal_moves(struct game *game, struct position pos) {
-	struct move_list *list = alloc_move(game);
+struct move_list *get_legal_moves(struct game *game, position pos) {
+	struct move_list *list = alloc_move(game); // dummy node to simplify adding moves to the list
 	struct piece *piece = &game->board[pos.y][pos.x];
 	if (piece->type == NONE || piece->color != game->active_color) return list;
 	switch (piece->type) {
 		case PAWN:;
 			int8_t direction = piece->color == WHITE ? 1 : -1;
-			if ()
-				break;
+			int8_t home_rank = piece->color == WHITE ? 1 : CHESS_BOARD_HEIGHT - 2;
+
+			position forward = POS(pos.x, pos.y + direction);
+			position forward2 = POS(pos.x, pos.y + 2 * direction);
+			struct piece *forward_piece = get_piece(game, forward);
+			struct piece *forward2_piece = get_piece(game, forward2);
+			if (forward_piece && forward_piece->type == NONE) {
+				// pawn can move forward
+				add_move(game, list, MOVE(pos, forward, ));
+				if (home_rank == pos.y && forward2_piece && forward2_piece->type == NONE) {
+					// pawn can move forward two spaces if it is on its home rank
+					add_move(game, list, MOVE(pos, forward2, ));
+				}
+			}
+
+			position left = POS(pos.x - 1, pos.y + direction);
+			position right = POS(pos.x + 1, pos.y + direction);
+			struct piece *left_piece = get_piece(game, left);
+			struct piece *right_piece = get_piece(game, right);
+			if (left_piece) {
+				if (left_piece->type != NONE && left_piece->color != piece->color) {
+					add_move(game, list, MOVE(pos, left, ));
+				} else if (position_equal(game->en_passant, left)) {
+					add_move(game, list, MOVE(pos, left, .en_passant = true));
+				}
+			}
+			if (right_piece) {
+				if (right_piece->type != NONE && right_piece->color != piece->color) {
+					add_move(game, list, MOVE(pos, right, ));
+				} else if (position_equal(game->en_passant, right)) {
+					add_move(game, list, MOVE(pos, right, .en_passant = true));
+				}
+			}
+			break;
 		case KNIGHT:;
-			struct position directions[8] = {
+			position directions[8] = {
 			        {1,  2 },
 			        {2,  1 },
 			        {2,  -1},
@@ -294,10 +332,7 @@ struct move_list *get_legal_moves(struct game *game, struct position pos) {
 			        {-1, 2 }
             };
 			for (uint8_t i = 0; i < sizeof(directions) / sizeof(directions[0]); ++i) {
-				add_move(game, list, (struct move){
-				                             .from = pos,
-				                             .to = {pos.x + directions[i].x, pos.y + directions[i].y}
-                });
+				add_move(game, list, MOVE(pos, POS(pos.x + directions[i].x, pos.y + directions[i].y), ));
 			}
 			break;
 		case BISHOP:
@@ -315,7 +350,7 @@ struct move_list *get_legal_moves(struct game *game, struct position pos) {
 		default:
 			break;
 	}
-	return list;
+	return list->next; // skip the dummy node
 }
 
 #include <stdio.h>
@@ -323,14 +358,20 @@ struct move_list *get_legal_moves(struct game *game, struct position pos) {
 void chess_print(struct game *game) {
 	printf("  ");
 	for (uint8_t x = 0; x < CHESS_BOARD_WIDTH; x++) {
-		printf("%c ", file_to_letter(x));
+		printf("%c ", file_to_char(x));
 	}
 	printf("\n");
-	for (uint8_t y = 0; y < CHESS_BOARD_HEIGHT; y++) {
-		printf("%c ", rank_to_letter(y));
+	for (uint8_t y_ = 0; y_ < CHESS_BOARD_HEIGHT; y_++) {
+		uint8_t y = CHESS_BOARD_HEIGHT - 1 - y_;
+		printf("%c ", rank_to_char(y));
 		for (uint8_t x = 0; x < CHESS_BOARD_WIDTH; x++) {
-			struct piece *p = &game->board[y][x];
-			printf("%c ", piece_to_letter(*p));
+			struct piece *p = get_piece(game, POS(x, y));
+			if (p->type == NONE)
+				printf("%c ", piece_to_char(*p));
+			else if (p->color == WHITE)
+				printf("\033[1;47;30m%c\033[0m ", piece_to_char(*p));
+			else
+				printf("\033[1;40;37m%c\033[0m ", piece_to_char(*p));
 		}
 		printf("\n");
 	}

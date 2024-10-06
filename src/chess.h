@@ -5,6 +5,9 @@
 #define CHESS_BOARD_WIDTH (8)
 #define CHESS_BOARD_HEIGHT (8)
 
+#define POS(x_, y_) ((struct position){.x = (x_), .y = (y_)})
+#define MOVE(from_, to_, other) ((struct move){.from = (from_), .to = (to_), other})
+
 struct piece {
 	enum type {
 		NONE = 0,
@@ -21,10 +24,10 @@ struct piece {
 	} color;
 };
 
-struct position {
-	int8_t x;
-	int8_t y;
-};
+typedef struct position {
+	int8_t x; // file
+	int8_t y; // rank
+} position;
 
 struct game {
 	void *(*malloc)(size_t);
@@ -55,14 +58,16 @@ struct move {
 	} state;
 };
 
-char piece_to_letter(struct piece piece);
-struct piece letter_to_piece(char letter);
-char rank_to_letter(uint8_t rank);
-char file_to_letter(uint8_t file);
+char piece_to_char(struct piece);
+struct piece char_to_piece(char);
+char rank_to_char(uint8_t rank);
+char file_to_char(uint8_t file);
 
-struct piece *get_piece(struct game *game, struct position pos);
 bool position_equal(struct position a, struct position b);
+bool position_valid_xy(int8_t x, int8_t y);
 bool position_valid(struct position pos);
+struct piece *get_piece_xy(struct game *game, int8_t x, int8_t y);
+struct piece *get_piece(struct game *game, struct position pos);
 
 struct move_list {
 	struct move move;
@@ -70,8 +75,8 @@ struct move_list {
 };
 void add_move(struct game *game, struct move_list *list, struct move move);
 
-bool loop_pieces_between(struct game *game, struct position from, struct position to, bool (*callback)(struct position, void *), void *data);
-bool loop_board(struct game *game, bool (*callback)(struct position, void *), void *data);
+bool loop_pieces_between(struct position from, struct position to, bool (*callback)(struct position, void *), void *data);
+bool loop_board(bool (*callback)(struct position, void *), void *data);
 struct move_state get_move_state(struct game *game, enum color player);
 
 struct move_list *get_legal_moves(struct game *game, struct position pos);
