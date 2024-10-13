@@ -6,13 +6,9 @@
 int main() {
 	struct game *game = create_board(malloc, free);
 	board_init(game);
-	for (uint8_t i = 0; i < 101; ++i) {
+	for (uint16_t i = 0; i < 500; ++i) {
 		printf("%s's move\n", game->active_color == COLOR_WHITE ? "White" : "Black");
-		print_board(game, true, true);
-
-		char *move_str = get_move_string(game);
-		printf("Move history: %s\n", move_str);
-		game->free(move_str);
+		print_board(game, true, true, stdout);
 
 		if (game->win != STATE_NONE) {
 			printf("Game over\n");
@@ -32,5 +28,6 @@ int main() {
 
 		free_move_list(game, list);
 	}
+	print_board(game, true, true, stdout);
 	destroy_board(game);
 }

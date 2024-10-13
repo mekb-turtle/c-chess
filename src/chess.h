@@ -136,4 +136,6 @@ struct game *create_board(void *(*malloc_)(size_t), void (*free_)(void *));
 void destroy_board(struct game *game);
 void board_init(struct game *game);
 char *get_move_string(struct game *game);
-void print_board(struct game *game, bool unicode, bool colors);
+
+#include <stdio.h>
+void print_board(struct game *game, bool unicode, bool colors, FILE *fp);

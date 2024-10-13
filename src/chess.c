@@ -769,17 +769,39 @@ char *get_move_string(struct game *game) {
 	return move;
 }
 
-#include <stdio.h>
-
-void print_board(struct game *game, bool unicode, bool colors) {
-	printf("  ");
-	for (uint8_t x = 0; x < CHESS_BOARD_WIDTH; x++) {
-		printf("%c ", file_to_char(x));
+static bool print_line(char **line, FILE *fp) {
+	if (!line) return false;
+	if (!*line) return false;
+	size_t max_len = 0;
+	for (size_t i = 1; (*line)[i] && i < 100; ++i) {
+		// split at double spaces
+		if ((*line)[i - 1] == ' ')
+			if ((*line)[i] == ' ')
+				max_len = i;
 	}
-	printf("\n");
+	if (max_len) {
+		fwrite(*line, sizeof(char), max_len, fp);
+		*line = *line + max_len;
+	}
+	for (; **line == ' '; ++*line); // skip leading spaces
+	if (!**line) {                  // end of string
+		*line = NULL;
+		return false;
+	}
+}
+
+void print_board(struct game *game, bool unicode, bool colors, FILE *fp) {
+	char *move_str = get_move_string(game);
+	char *whole_move_str = move_str;
+	fprintf(fp, "  ");
+	for (uint8_t x = 0; x < CHESS_BOARD_WIDTH; x++) {
+		fprintf(fp, "%c ", file_to_char(x));
+	}
+	print_line(&move_str, fp);
+	fprintf(fp, "\n");
 	for (uint8_t y_ = 0; y_ < CHESS_BOARD_HEIGHT; y_++) {
 		uint8_t y = CHESS_BOARD_HEIGHT - 1 - y_;
-		printf("%c ", rank_to_char(y));
+		fprintf(fp, "%c ", rank_to_char(y));
 		for (uint8_t x = 0; x < CHESS_BOARD_WIDTH; x++) {
 			struct piece *p = get_piece(game, POS(x, y));
 			char c[6];
@@ -802,12 +824,14 @@ void print_board(struct game *game, bool unicode, bool colors) {
 				}
 			}
 			if (p->type == TYPE_NONE || !colors)
-				printf("%s ", c);
+				fprintf(fp, "%s ", c);
 			else if (p->color == COLOR_WHITE)
-				printf("\033[1;47;30m%s\033[0m ", c);
+				fprintf(fp, "\033[1;47;30m%s\033[0m ", c);
 			else
-				printf("\033[1;40;37m%s\033[0m ", c);
+				fprintf(fp, "\033[1;40;37m%s\033[0m ", c);
 		}
-		printf("\n");
+		print_line(&move_str, fp);
+		fprintf(fp, "\n");
 	}
+	game->free(whole_move_str);
 }
