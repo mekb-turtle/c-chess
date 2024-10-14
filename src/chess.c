@@ -86,6 +86,8 @@ struct game *create_board(void *(*malloc_)(size_t), void (*free_)(void *)) {
 	}
 	game->malloc = malloc_;
 	game->free = free_;
+	game->move_list = NULL;
+	game->move_list_tail = NULL;
 	board_init(game);
 	return game;
 }
@@ -100,6 +102,10 @@ void destroy_board(struct game *game) {
 }
 
 void board_init(struct game *game) {
+	free_move_list(game, game->move_list);
+	game->move_list = NULL;
+	game->move_list_tail = NULL;
+
 	game->win = STATE_NONE;
 	// white starts first
 	game->active_color = COLOR_WHITE;
@@ -788,6 +794,7 @@ static bool print_line(char **line, FILE *fp) {
 		*line = NULL;
 		return false;
 	}
+	return true;
 }
 
 void print_board(struct game *game, bool unicode, bool colors, FILE *fp) {
