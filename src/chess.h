@@ -1,3 +1,5 @@
+#ifndef CHESS_H
+#define CHESS_H
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
@@ -92,6 +94,7 @@ struct game {
 		// TODO: detect checkmate
 		STATE_CHECKMATE_WHITE_WIN,
 		STATE_CHECKMATE_BLACK_WIN,
+		// TODO: detect timeout and handle resignation
 		STATE_TIMEOUT_WHITE_WIN,
 		STATE_TIMEOUT_BLACK_WIN,
 		STATE_RESIGNATION_WHITE_WIN,
@@ -103,7 +106,7 @@ struct game {
 		STATE_INSUFFICIENT_MATERIAL,         // both players have insufficient material
 		STATE_TIMEOUT_INSUFFICIENT_MATERIAL, // player 1 has insufficient material and player 2 runs out of time
 
-		// TODO: handle logic for other win/draw conditions
+		// TODO: handle logic for other draw conditions
 
 		STATE_FIFTY_MOVE_RULE,
 		STATE_THREEFOLD_REPETITION,
@@ -116,6 +119,8 @@ char piece_to_char_struct(struct piece piece);
 struct piece char_to_piece(char);
 char rank_to_char(uint8_t rank);
 char file_to_char(uint8_t file);
+int8_t char_to_rank(char str);
+int8_t char_to_file(char str);
 
 enum piece_color get_opposite_color(enum piece_color color);
 
@@ -127,7 +132,12 @@ struct piece *get_piece(struct game *game, struct position pos);
 
 struct move_list *add_move(struct game *game, struct move_list *list, struct move move);
 
+enum find_move_reason {
+	REASON_NONE, REASON_WIN, REASON_AMBIGUOUS, REASON_ILLEGAL, REASON_SYNTAX, REASON_NONE_FOUND
+};
+
 struct move_list *get_legal_moves(struct game *game);
+enum find_move_reason find_move(struct game *game, struct move *out_move, const char *input);
 void free_move_list(struct game *game, struct move_list *list);
 bool perform_move(struct game *game, struct move move);
 
@@ -136,6 +146,4 @@ struct game *create_board(void *(*malloc_)(size_t), void (*free_)(void *));
 void destroy_board(struct game *game);
 void board_init(struct game *game);
 char *get_move_string(struct game *game);
-
-#include <stdio.h>
-void print_board(struct game *game, bool unicode, bool colors, FILE *fp);
+#endif

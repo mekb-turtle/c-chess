@@ -4,7 +4,7 @@ project('chess', 'c',
   default_options: ['warning_level=3'])
 
 # define source files
-src = files('src/main.c', 'src/chess.c', 'src/chess.h')
+src = files('src/main.c', 'src/chess.c', 'src/chess.h', 'src/input.h', 'src/input.c', 'src/display.h', 'src/display.c')
 
 # define project metadata
 url = 'https://github.com/mekb-turtle/c-chess'

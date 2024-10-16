@@ -1,7 +1,8 @@
 #include "chess.h"
-#include <string.h>
 #include <stdio.h>
+#include <string.h>
 #include <stdlib.h>
+#include <ctype.h>
 
 char piece_to_char(enum piece_type type, bool lowercase) {
 	char c = '\x00';
@@ -72,6 +73,16 @@ char rank_to_char(uint8_t rank) {
 
 char file_to_char(uint8_t file) {
 	return 'a' + file;
+}
+
+int8_t char_to_rank(char str) {
+	if (str < '1' || str > ('1' + CHESS_BOARD_HEIGHT - 1)) return -1;
+	return str - '1';
+}
+
+int8_t char_to_file(char str) {
+	if (str < 'a' || str > ('a' + CHESS_BOARD_WIDTH - 1)) return -1;
+	return str - 'a';
 }
 
 enum piece_color get_opposite_color(enum piece_color color) {
@@ -451,20 +462,24 @@ static bool filter_legal_moves(struct game *game, struct move_list *list, enum p
 	return list->move.legal;
 }
 
-static bool annotate_moves(struct game *game, struct move_list *list, enum piece_color player, void *data) {
-	struct move *move = &list->move;
-	if (!move->legal) return true;
-
+static bool map_move_state(struct game *game, struct move_list *list, enum piece_color player, void *data) {
+	(void) data;
 	// annotate check/stalemate/checkmate for the other player
 	struct game game_copy = *game;
 
-	if (!perform_move_internal(&game_copy, *move)) {
-		fprintf(stderr, "this should not be possible\n");
-		exit(1);
-	}
+	if (!perform_move_internal(&game_copy, list->move))
+		return false;
 
 	struct move_state state = get_move_state(&game_copy, get_opposite_color(player));
-	move->state = state;
+	list->move.state = state;
+
+	return true;
+}
+
+static bool annotate_moves(struct game *game, struct move_list *list, enum piece_color player, void *data) {
+	(void) player;
+	struct move *move = &list->move;
+	if (!move->legal) return true;
 
 	char *notation = move->notation;
 	uint8_t i = 0;
@@ -519,8 +534,8 @@ static bool annotate_moves(struct game *game, struct move_list *list, enum piece
 	}
 
 	// add the check/checkmate annotation
-	if (state.check) {
-		notation[i++] = state.stalemate ? '#' : '+';
+	if (move->state.check) {
+		notation[i++] = move->state.stalemate ? '#' : '+';
 	}
 
 	// add the null terminator
@@ -610,6 +625,7 @@ static struct move_list *get_available_moves_internal(struct game *game, enum pi
 struct move_list *get_legal_moves(struct game *game) {
 	struct move_list *list = get_available_moves_internal(game, game->active_color, false);
 	filter_moves(game, list, game->active_color, filter_legal_moves, NULL);
+	filter_moves(game, list, game->active_color, map_move_state, NULL);
 	filter_moves(game, list, game->active_color, annotate_moves, (void *) list->next);
 	struct move_list *new_list = list->next;
 	game->free(list); // free the dummy node
@@ -715,6 +731,13 @@ bool perform_move(struct game *game, struct move move) {
 
 	// add the move to the move list
 	add_move_end(game, move);
+
+	if (move.state.stalemate) {
+		if (move.state.check)
+			game->win = game->active_color == COLOR_WHITE ? STATE_CHECKMATE_BLACK_WIN : STATE_CHECKMATE_WHITE_WIN;
+		else
+			game->win = STATE_STALEMATE;
+	}
 	return true;
 }
 
@@ -775,70 +798,137 @@ char *get_move_string(struct game *game) {
 	return move;
 }
 
-static bool print_line(char **line, FILE *fp) {
-	if (!line) return false;
-	if (!*line) return false;
-	size_t max_len = 0;
-	for (size_t i = 1; (*line)[i] && i < 100; ++i) {
-		// split at double spaces
-		if ((*line)[i - 1] == ' ')
-			if ((*line)[i] == ' ')
-				max_len = i;
+enum find_move_reason find_move(struct game *game, struct move *out_move, const char *input_) {
+	if (game->win != STATE_NONE) {
+		return REASON_WIN;
 	}
-	if (max_len) {
-		fwrite(*line, sizeof(char), max_len, fp);
-		*line = *line + max_len;
-	}
-	for (; **line == ' '; ++*line); // skip leading spaces
-	if (!**line) {                  // end of string
-		*line = NULL;
-		return false;
-	}
-	return true;
-}
 
-void print_board(struct game *game, bool unicode, bool colors, FILE *fp) {
-	char *move_str = get_move_string(game);
-	char *whole_move_str = move_str;
-	fprintf(fp, "  ");
-	for (uint8_t x = 0; x < CHESS_BOARD_WIDTH; x++) {
-		fprintf(fp, "%c ", file_to_char(x));
+	// get list of legal moves
+	struct move_list *list = get_legal_moves(game);
+	if (!list) {
+		return REASON_WIN;
 	}
-	print_line(&move_str, fp);
-	fprintf(fp, "\n");
-	for (uint8_t y_ = 0; y_ < CHESS_BOARD_HEIGHT; y_++) {
-		uint8_t y = CHESS_BOARD_HEIGHT - 1 - y_;
-		fprintf(fp, "%c ", rank_to_char(y));
-		for (uint8_t x = 0; x < CHESS_BOARD_WIDTH; x++) {
-			struct piece *p = get_piece(game, POS(x, y));
-			char c[6];
-			memset(c, 0, sizeof(c));
-			if (!unicode) {
-				if (p->type == TYPE_NONE)
-					c[0] = '-';
-				else
-					c[0] = piece_to_char_struct(*p);
-			} else {
-				if (p->type == TYPE_NONE) {
-					// dot
-					c[0] = '\xc2';
-					c[1] = '\xb7';
-				} else {
-					// chess pieces, pieces are filled if color is enabled or if the piece is black
-					c[0] = '\xe2';
-					c[1] = '\x99';
-					c[2] = '\x93' + p->type + (p->color == COLOR_BLACK || colors ? 6 : 0);
-				}
-			}
-			if (p->type == TYPE_NONE || !colors)
-				fprintf(fp, "%s ", c);
-			else if (p->color == COLOR_WHITE)
-				fprintf(fp, "\033[1;47;30m%s\033[0m ", c);
-			else
-				fprintf(fp, "\033[1;40;37m%s\033[0m ", c);
+
+	enum find_move_reason result = REASON_NONE;
+	char *input = NULL;
+
+	if (!input_[0]) goto syntax;
+
+	size_t len = strlen(input_);
+	if (len > 16) goto syntax;
+
+	// recreate the string
+	input = game->malloc(len + 1);
+	if (!input) {
+		perror("malloc");
+		free_move_list(game, list);
+		exit(1);
+	}
+	memcpy(input, input_, len + 1);
+
+	// lowercase
+	for (char *i; *i; ++i) *i = tolower(*i);
+
+	// trim check/checkmate
+	if (input[len - 1] == '#' || input[len - 1] == '+') {
+		input[len - 1] = '\0';
+		--len;
+	}
+
+	bool castle_king = false, castle_queen = false;
+
+	if (strcmp(input, "0-0") == 0 || strcmp(input, "00") == 0 || strcmp(input, "o-o") == 0 || strcmp(input, "oo") == 0) {
+		castle_king = true;
+	} else if (strcmp(input, "0-0-0") == 0 || strcmp(input, "000") == 0 || strcmp(input, "o-o-o") == 0 || strcmp(input, "ooo") == 0) {
+		castle_queen = true;
+	}
+
+	size_t i = 0;
+	enum piece_type type, promote_type = TYPE_NONE;
+	int8_t file_from, rank_from, file_to, rank_to;
+
+	if (!castle_king && !castle_queen) {
+		type = char_to_piece(input[i++]).type;
+		if (type == TYPE_NONE) type = TYPE_PAWN;
+
+		file_from = char_to_file(input[i]);
+		if (file_from >= 0) ++i;
+		rank_from = char_to_rank(input[i]);
+		if (rank_from >= 0) ++i;
+
+		if (input[i] == 'x') ++i;
+
+		file_to = char_to_file(input[i++]);
+		if (file_to < 0) goto syntax;
+		rank_to = char_to_rank(input[i++]);
+		if (rank_to < 0) goto syntax;
+
+		if (input[i] == '=') {
+			++i;
+			promote_type = char_to_piece(input[i++]).type;
+			if (promote_type == TYPE_NONE) goto syntax;
+		} else if (input[i] != '\0') {
+			goto syntax;
 		}
-		print_line(&move_str, fp);
-		fprintf(fp, "\n");
 	}
-	game->free(whole_move_str);
+
+	struct move_list *candidates = alloc_move(game);
+
+	for (struct move_list *moves = list; moves; moves = moves->next) {
+		struct move *move = &moves->move;
+		if (move->type == MOVE_CASTLE) {
+			// check if the move is a castle
+			if (castle_king && move->castle == KING_SIDE)
+				goto add_move;
+			else if (castle_queen && move->castle == QUEEN_SIDE)
+				goto add_move;
+			continue;
+		} else if (castle_king || castle_queen)
+			continue;
+
+		// check if the move matches the input
+		if (file_from >= 0 && file_from != move->from.x) continue;
+		if (rank_from >= 0 && rank_from != move->from.y) continue;
+		if (file_to != move->to.x) continue;
+		if (rank_to != move->to.y) continue;
+
+		// check if the piece type matches
+		struct piece *from = get_piece(game, move->from);
+		if (!from) continue;
+		if (from->type != type) continue;
+
+		// check if the promotion type matches
+		if (move->type == MOVE_PROMOTION || move->type == MOVE_CAPTURE_PROMOTION) {
+			if (promote_type != move->promote_to) continue;
+		} else if (promote_type != TYPE_NONE)
+			continue;
+	add_move:
+		add_move(game, candidates, *move);
+	}
+	// candidates has a dummy node, so the first move is candidates->next
+	candidates = candidates->next;
+	if (!candidates) {
+		// no moves found
+		result = REASON_NONE_FOUND;
+		goto end;
+	}
+	if (candidates->next) {
+		// more than one move found
+		result = REASON_AMBIGUOUS;
+		goto end;
+	}
+	// only one move found
+	// check if the move is legal
+	if (!candidates->move.legal) {
+		result = REASON_ILLEGAL;
+		goto end;
+	}
+	*out_move = candidates->move;
+	return REASON_NONE;
+syntax:
+	result = REASON_SYNTAX;
+end:
+	if (input) game->free(input);
+	free_move_list(game, list);
+	return result;
 }
