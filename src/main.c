@@ -66,10 +66,12 @@ int main() {
 		printf("Player 1 (Q/W): %s", player_type_to_str(options.player1.type));
 		if (options.player1.type != PLAYER_LOCAL && options.player1.path)
 			printf(" (%s)", options.player1.path);
+		printf("%*s", 10, "");
 		printf("\n");
 		printf("Player 2 (A/S): %s", player_type_to_str(options.player2.type));
 		if (options.player2.type != PLAYER_LOCAL && options.player2.path)
 			printf(" (%s)", options.player2.path);
+		printf("%*s", 10, "");
 		printf("\n");
 		printf("Player 1 Color (E): ");
 		switch (options.player1_color_select) {
@@ -81,12 +83,15 @@ int main() {
 				printf("Random");
 				break;
 		}
+		printf("%*s", 10, "");
 		printf("\n");
 		printf("Unicode (U): ");
 		print_bool(options.display, options.display.unicode, stdout);
+		printf("%*s", 10, "");
 		printf("\n");
 		printf("Color (I): ");
 		print_bool(options.display, options.display.color, stdout);
+		printf("%*s", 10, "");
 		printf("\n");
 		printf("Start (Enter)\n");
 		switch (tolower(scan_char(stdin, true))) {
@@ -109,6 +114,7 @@ int main() {
 			case '\r':
 				goto start;
 		}
+		printf("\x1b[6A");
 	}
 	if (options.player1_color_select == PLAYER_RANDOM)
 		options.player1_color = rand() % 2 ? COLOR_WHITE : COLOR_BLACK;
@@ -119,7 +125,7 @@ int main() {
 start:;
 	struct game *game = create_board(malloc, free);
 	board_init(game);
-	for (uint16_t i = 0; i < 10; ++i) {
+	while (true) {
 		print_board_opt(game);
 
 		if (game->win != STATE_NONE) {

@@ -70,38 +70,31 @@ reprint_move:
 		enum find_move_reason reason = find_move(game, &move, str);
 		if (display.color) {
 			// provide color feedback
-			int color = 0;
+			int color;
 			switch (reason) {
-				case REASON_NONE:
-					color = 42;
-					break;
-				case REASON_WIN:
+				case REASON_SYNTAX:
 					color = 44;
+					break;
+				case REASON_SUCCESS:
+					color = 42;
 					break;
 				case REASON_AMBIGUOUS:
 					color = 43;
 					break;
-				case REASON_ILLEGAL:
-					color = 45;
-					break;
-				case REASON_SYNTAX:
+				default:
 					color = 41;
 					break;
-				case REASON_NONE_FOUND:
-					color = 46;
-					break;
 			}
-			fprintf(out, "\x1b[0;%im", color);
+			fprintf(out, "\x1b[1;%i;30m", color);
 		}
-		fprintf(out, "> ");
+		fprintf(out, ">");
 		if (display.color)
 			fprintf(out, "\x1b[0m");
-		fprintf(out, "%s", str);
+		fprintf(out, " %s", str);
 		size_t len = strlen(str);
 		// padding
-		fprintf(out, "\x1b[s");
 		for (size_t i = 0; i < str_len - len; ++i) fprintf(out, " ");
-		fprintf(out, "\x1b[u");
+		for (size_t i = 0; i < str_len - len; ++i) fprintf(out, "\x1b[D");
 
 		// input
 		int c = scan_char(in, true);
@@ -111,13 +104,25 @@ reprint_move:
 			print(game);
 			continue;
 		} else if (c == '\n' || c == '\r') {
-			if (reason == REASON_NONE) {
+			if (reason == REASON_SUCCESS) {
 				fprintf(out, "\n");
 				return move;
 			}
 			if (display.color)
 				fprintf(out, "\x1b[0m");
-			fprintf(out, "\x1b[G%*s\x1b[GInvalid move, ", (int) str_len, "");
+			fprintf(out, "\x1b[G%*s\x1b[F%*s\x1b[G", (int) str_len, "", 30, "");
+			switch (reason) {
+				case REASON_AMBIGUOUS:
+					fprintf(out, "Ambiguous move");
+					break;
+				case REASON_ILLEGAL:
+					fprintf(out, "Illegal move");
+					break;
+				default:
+					fprintf(out, "Invalid move");
+					break;
+			}
+			fprintf(out, ", ");
 			goto reprint_move;
 		} else if (c == 127 || c == 8) {
 			// backspace

@@ -133,7 +133,7 @@ struct piece *get_piece(struct game *game, struct position pos);
 struct move_list *add_move(struct game *game, struct move_list *list, struct move move);
 
 enum find_move_reason {
-	REASON_NONE, REASON_WIN, REASON_AMBIGUOUS, REASON_ILLEGAL, REASON_SYNTAX, REASON_NONE_FOUND
+	REASON_SUCCESS, REASON_WIN, REASON_AMBIGUOUS, REASON_ILLEGAL, REASON_SYNTAX, REASON_NONE_FOUND
 };
 
 struct move_list *get_legal_moves(struct game *game);

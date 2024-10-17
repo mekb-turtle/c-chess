@@ -798,6 +798,83 @@ char *get_move_string(struct game *game) {
 	return move;
 }
 
+static struct parse_move_result {
+	bool success;
+	enum piece_type type, promote_type;
+	int8_t file_from, rank_from, file_to, rank_to;
+} parse_move_internal(char *input, bool pawn_only) { // pawn_only is for moves like b4 where this code thinks the b is a bishop
+	struct parse_move_result result = {
+	        .success = false,
+	        .type = TYPE_NONE,
+	        .promote_type = TYPE_NONE,
+	        .file_from = -1,
+	        .rank_from = -1,
+	        .file_to = -1,
+	        .rank_to = -1};
+	size_t i = 0, j = strlen(input) - 1;
+	// get piece
+	if (pawn_only) {
+		result.type = TYPE_PAWN;
+	} else {
+		result.type = char_to_piece(input[i]).type;
+		if (result.type == TYPE_NONE)
+			result.type = TYPE_PAWN;
+		else if (result.type != TYPE_PAWN)
+			++i;
+	}
+
+	// work backwards since from position is optional
+	// i represents the start of the string, j must not go less than i without syntax error
+
+	// e.g g8=Q, i = 0 'g', j = 3 'Q'
+	if (j > i + 2 && input[j - 1] == '=') {
+		// promotion
+		result.promote_type = char_to_piece(input[j]).type;
+		if (result.promote_type == TYPE_NONE) return result;
+		j -= 2;
+	}
+
+	if (j <= i) return result; // avoid underflow
+	result.rank_to = char_to_rank(input[j]);
+	if (result.rank_to < 0) return result;
+
+	--j;
+	result.file_to = char_to_file(input[j]);
+	if (result.file_to < 0) return result;
+
+	// check capture and from position
+	if (j > i) {
+		--j;
+		if (input[j] == 'x') {
+			// discard 'x', go to next if there are remaining characters, otherwise skip to the next section
+			if (j <= i) goto confirm;
+			--j;
+		}
+		if (j >= i) {
+			// read rank, same steps as before
+			result.rank_from = char_to_rank(input[j]);
+			if (result.rank_from >= 0) {
+				if (j <= i) goto confirm;
+				--j;
+			}
+		}
+		if (j >= i) {
+			// read file, same steps as before
+			result.file_from = char_to_file(input[j]);
+			if (result.file_from >= 0) {
+				if (j <= i) goto confirm;
+				--j;
+			}
+		}
+		if (j >= i) return result; // there are remaining characters
+	}
+
+confirm:
+	// sucess if there are no remaining characters
+	result.success = j == i;
+	return result;
+}
+
 enum find_move_reason find_move(struct game *game, struct move *out_move, const char *input_) {
 	if (game->win != STATE_NONE) {
 		return REASON_WIN;
@@ -809,13 +886,11 @@ enum find_move_reason find_move(struct game *game, struct move *out_move, const 
 		return REASON_WIN;
 	}
 
-	enum find_move_reason result = REASON_NONE;
+	enum find_move_reason result;
 	char *input = NULL;
 
-	if (!input_[0]) goto syntax;
-
 	size_t len = strlen(input_);
-	if (len > 16) goto syntax;
+	if (len > 16 || len < 2) goto syntax;
 
 	// recreate the string
 	input = game->malloc(len + 1);
@@ -827,7 +902,7 @@ enum find_move_reason find_move(struct game *game, struct move *out_move, const 
 	memcpy(input, input_, len + 1);
 
 	// lowercase
-	for (char *i; *i; ++i) *i = tolower(*i);
+	for (char *i = input; *i; ++i) *i = tolower(*i);
 
 	// trim check/checkmate
 	if (input[len - 1] == '#' || input[len - 1] == '+') {
@@ -836,40 +911,17 @@ enum find_move_reason find_move(struct game *game, struct move *out_move, const 
 	}
 
 	bool castle_king = false, castle_queen = false;
+	struct parse_move_result parse;
 
 	if (strcmp(input, "0-0") == 0 || strcmp(input, "00") == 0 || strcmp(input, "o-o") == 0 || strcmp(input, "oo") == 0) {
 		castle_king = true;
 	} else if (strcmp(input, "0-0-0") == 0 || strcmp(input, "000") == 0 || strcmp(input, "o-o-o") == 0 || strcmp(input, "ooo") == 0) {
 		castle_queen = true;
-	}
-
-	size_t i = 0;
-	enum piece_type type, promote_type = TYPE_NONE;
-	int8_t file_from, rank_from, file_to, rank_to;
-
-	if (!castle_king && !castle_queen) {
-		type = char_to_piece(input[i++]).type;
-		if (type == TYPE_NONE) type = TYPE_PAWN;
-
-		file_from = char_to_file(input[i]);
-		if (file_from >= 0) ++i;
-		rank_from = char_to_rank(input[i]);
-		if (rank_from >= 0) ++i;
-
-		if (input[i] == 'x') ++i;
-
-		file_to = char_to_file(input[i++]);
-		if (file_to < 0) goto syntax;
-		rank_to = char_to_rank(input[i++]);
-		if (rank_to < 0) goto syntax;
-
-		if (input[i] == '=') {
-			++i;
-			promote_type = char_to_piece(input[i++]).type;
-			if (promote_type == TYPE_NONE) goto syntax;
-		} else if (input[i] != '\0') {
-			goto syntax;
-		}
+	} else {
+		parse = parse_move_internal(input, false);
+		// work around flaw in parsing logic
+		if (!parse.success) parse = parse_move_internal(input, true);
+		if (!parse.success) goto syntax;
 	}
 
 	struct move_list *candidates = alloc_move(game);
@@ -887,20 +939,20 @@ enum find_move_reason find_move(struct game *game, struct move *out_move, const 
 			continue;
 
 		// check if the move matches the input
-		if (file_from >= 0 && file_from != move->from.x) continue;
-		if (rank_from >= 0 && rank_from != move->from.y) continue;
-		if (file_to != move->to.x) continue;
-		if (rank_to != move->to.y) continue;
+		if (parse.file_from >= 0 && parse.file_from != move->from.x) continue;
+		if (parse.rank_from >= 0 && parse.rank_from != move->from.y) continue;
+		if (parse.file_to != move->to.x) continue;
+		if (parse.rank_to != move->to.y) continue;
 
 		// check if the piece type matches
 		struct piece *from = get_piece(game, move->from);
 		if (!from) continue;
-		if (from->type != type) continue;
+		if (from->type != parse.type) continue;
 
 		// check if the promotion type matches
 		if (move->type == MOVE_PROMOTION || move->type == MOVE_CAPTURE_PROMOTION) {
-			if (promote_type != move->promote_to) continue;
-		} else if (promote_type != TYPE_NONE)
+			if (parse.promote_type != move->promote_to) continue;
+		} else if (parse.promote_type != TYPE_NONE)
 			continue;
 	add_move:
 		add_move(game, candidates, *move);
@@ -924,7 +976,8 @@ enum find_move_reason find_move(struct game *game, struct move *out_move, const 
 		goto end;
 	}
 	*out_move = candidates->move;
-	return REASON_NONE;
+	result = REASON_SUCCESS;
+	goto end;
 syntax:
 	result = REASON_SYNTAX;
 end:

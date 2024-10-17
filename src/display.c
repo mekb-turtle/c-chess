@@ -1,7 +1,7 @@
 #include "display.h"
 #include <string.h>
 
-static bool print_line(char **line, FILE *fp) {
+static bool print_line(struct display_settings display, char **line, FILE *fp) {
 	const size_t limit = 100;
 	if (!line) return false;
 	if (!*line) return false;
@@ -12,8 +12,15 @@ static bool print_line(char **line, FILE *fp) {
 			if ((*line)[i] == ' ')
 				max_len = i;
 	}
-	if (!max_len || i < limit) max_len = i;
+	if (i < limit) max_len = i; // end of string
+	else if (!max_len) max_len = i - 1;
 	if (max_len) {
+		if (display.color) {
+			fprintf(fp, "\x1b[1;47;30m \x1b[0m");
+		} else {
+			fprintf(fp, "|");
+		}
+		fprintf(fp, " ");
 		fwrite(*line, sizeof(char), max_len, fp);
 		*line = *line + max_len;
 	}
@@ -32,10 +39,10 @@ void print_colored(struct display_settings display, enum piece_color color, char
 	}
 	switch (color) {
 		case COLOR_WHITE:
-			fprintf(fp, "\033[1;47;30m%s\033[0m", str);
+			fprintf(fp, "\x1b[1;47;30m%s\x1b[0m", str);
 			break;
 		case COLOR_BLACK:
-			fprintf(fp, "\033[1;40;37m%s\033[0m", str);
+			fprintf(fp, "\x1b[1;40;37m%s\x1b[0m", str);
 			break;
 	}
 }
@@ -50,21 +57,53 @@ void print_bool(struct display_settings display, bool state, FILE *fp) {
 		return;
 	}
 	if (state)
-		fprintf(fp, "\033[1;42;30mYes\033[0m");
+		fprintf(fp, "\x1b[1;42;30mYes\x1b[0m");
 	else
-		fprintf(fp, "\033[1;41;30mNo\033[0m");
+		fprintf(fp, "\x1b[1;41;30mNo\x1b[0m");
 }
 
-void print_board(struct display_settings display, bool flip, struct game *game, FILE *fp) {
-	char *move_str = get_move_string(game);
-	char *whole_move_str = move_str;
+static void print_piece(struct display_settings display, struct piece p, FILE *fp) {
+	char c[6];
+	memset(c, 0, sizeof(c));
+	if (!display.unicode) {
+		if (p.type == TYPE_NONE)
+			c[0] = '-';
+		else
+			c[0] = piece_to_char_struct(p);
+	} else {
+		if (p.type == TYPE_NONE) {
+			// dot
+			c[0] = '\xc2';
+			c[1] = '\xb7';
+		} else {
+			// chess pieces, pieces are filled if color is enabled or if the piece is black
+			c[0] = '\xe2';
+			c[1] = '\x99';
+			c[2] = '\x93' + p.type + (p.color == COLOR_BLACK || display.color ? 6 : 0);
+		}
+	}
+	if (p.type == TYPE_NONE)
+		fprintf(fp, "%s", c);
+	else
+		print_colored(display, p.color, c, fp);
+}
+
+void print_files(struct display_settings display, bool flip, char **line, FILE *fp) {
 	fprintf(fp, "  ");
 	for (uint8_t x_ = 0; x_ < CHESS_BOARD_WIDTH; x_++) {
 		uint8_t x = flip ? CHESS_BOARD_WIDTH - 1 - x_ : x_;
 		fprintf(fp, "%c ", file_to_char(x));
 	}
-	print_line(&move_str, fp);
+	fprintf(fp, "  ");
+	print_line(display, line, fp);
 	fprintf(fp, "\n");
+}
+
+void print_board(struct display_settings display, bool flip, struct game *game, FILE *fp) {
+	char *move_str = get_move_string(game);
+	char *whole_move_str = move_str;
+
+	print_files(display, flip, &move_str, fp);
 	for (uint8_t y_ = 0; y_ < CHESS_BOARD_HEIGHT; y_++) {
 		// flip if necessary
 		uint8_t y = flip ? y_ : CHESS_BOARD_HEIGHT - 1 - y_;
@@ -72,33 +111,13 @@ void print_board(struct display_settings display, bool flip, struct game *game, 
 		for (uint8_t x_ = 0; x_ < CHESS_BOARD_WIDTH; x_++) {
 			uint8_t x = flip ? CHESS_BOARD_WIDTH - 1 - x_ : x_;
 			struct piece *p = get_piece(game, POS(x, y));
-			char c[6];
-			memset(c, 0, sizeof(c));
-			if (!display.unicode) {
-				if (p->type == TYPE_NONE)
-					c[0] = '-';
-				else
-					c[0] = piece_to_char_struct(*p);
-			} else {
-				if (p->type == TYPE_NONE) {
-					// dot
-					c[0] = '\xc2';
-					c[1] = '\xb7';
-				} else {
-					// chess pieces, pieces are filled if color is enabled or if the piece is black
-					c[0] = '\xe2';
-					c[1] = '\x99';
-					c[2] = '\x93' + p->type + (p->color == COLOR_BLACK || display.color ? 6 : 0);
-				}
-			}
-			if (p->type == TYPE_NONE)
-				fprintf(fp, "%s", c);
-			else
-				print_colored(display, p->color, c, fp);
+			print_piece(display, *p, fp);
 			fprintf(fp, " ");
 		}
-		print_line(&move_str, fp);
+		fprintf(fp, "%c ", rank_to_char(y));
+		print_line(display, &move_str, fp);
 		fprintf(fp, "\n");
 	}
+	print_files(display, flip, &move_str, fp);
 	game->free(whole_move_str);
 }
