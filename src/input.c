@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "display.h"
+#include "chess.h"
 
 int scan_char(FILE *fp, bool blocking) {
 	// get old terminal settings
@@ -62,7 +63,11 @@ struct move prompt_for_move(struct display_settings display, struct game *game, 
 reprint_move:
 	fprintf(out, "Enter move: (");
 	print_color(display, game->active_color, stdout);
-	fprintf(out, ")\n");
+	fprintf(out, ") ");
+	// print move number
+	fprintf(out, "%lu.", game->full_move);
+	if (game->active_color == COLOR_BLACK) fprintf(out, "..");
+	fprintf(out, "\n");
 	while (true) {
 		// clear line
 		fprintf(out, "\x1b[G");
@@ -90,7 +95,9 @@ reprint_move:
 		fprintf(out, ">");
 		if (display.color)
 			fprintf(out, "\x1b[0m");
-		fprintf(out, " %s", str);
+		fprintf(out, " ");
+		// print string
+		fprintf(out, "%s", str);
 		size_t len = strlen(str);
 		// padding
 		for (size_t i = 0; i < str_len - len; ++i) fprintf(out, " ");

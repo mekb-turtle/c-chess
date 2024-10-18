@@ -5,6 +5,10 @@ static bool print_line(struct display_settings display, char **line, FILE *fp) {
 	const size_t limit = 100;
 	if (!line) return false;
 	if (!*line) return false;
+	if (!**line) {
+		*line = NULL;
+		return false;
+	}
 	size_t max_len = 0, i = 1;
 	for (i = 1; (*line)[i] && i < limit; ++i) {
 		// split at double spaces

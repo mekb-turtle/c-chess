@@ -772,7 +772,7 @@ char *get_move_string(struct game *game) {
 		if (player == COLOR_WHITE) {
 			if (i > 0) strcat(move, " "); // add space between full moves
 			char number[16];
-			sprintf(number, "%lu.", ++i);
+			snprintf(number, 16, "%lu.", ++i);
 			strcat(move, number);
 		}
 		strcat(move, list->move.notation);
