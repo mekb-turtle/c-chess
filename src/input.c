@@ -56,7 +56,7 @@ int scan_char(FILE *fp, bool blocking) {
 }
 
 struct move prompt_for_move(struct display_settings display, struct game *game, FILE *out, FILE *in, bool *view_flip, void (*print)(struct game *)) {
-	const size_t str_len = 16;
+	const size_t str_len = 10;
 	char str[str_len];
 	memset(str, 0, sizeof(str));
 
@@ -99,9 +99,10 @@ reprint_move:
 		// print string
 		fprintf(out, "%s", str);
 		size_t len = strlen(str);
+		size_t clear_len = str_len - len + 2; // extra for luck
 		// padding
-		for (size_t i = 0; i < str_len - len; ++i) fprintf(out, " ");
-		for (size_t i = 0; i < str_len - len; ++i) fprintf(out, "\x1b[D");
+		for (size_t i = 0; i < clear_len; ++i) fprintf(out, " ");
+		for (size_t i = 0; i < clear_len; ++i) fprintf(out, "\x1b[D");
 
 		// input
 		int c = scan_char(in, true);

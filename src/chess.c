@@ -2,7 +2,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include <ctype.h>
 
 char piece_to_char(enum piece_type type, bool lowercase) {
 	char c = '\x00';
@@ -90,6 +89,7 @@ enum piece_color get_opposite_color(enum piece_color color) {
 }
 
 struct game *create_board(void *(*malloc_)(size_t), void (*free_)(void *)) {
+	// let user provide their own malloc and free functions
 	struct game *game = malloc_(sizeof(struct game));
 	if (!game) {
 		perror("malloc");
@@ -97,6 +97,8 @@ struct game *create_board(void *(*malloc_)(size_t), void (*free_)(void *)) {
 	}
 	game->malloc = malloc_;
 	game->free = free_;
+
+	// avoid free_move_list from freeing an uninitialized pointer
 	game->move_list = NULL;
 	game->move_list_tail = NULL;
 	board_init(game);
@@ -136,6 +138,7 @@ void board_init(struct game *game) {
 			struct piece *piece = get_piece(game, pos);
 			if (!piece) continue;
 			piece->type = TYPE_NONE;
+			// puts the pieces in their starting positions
 			if (pos.y == 1 || pos.y == CHESS_BOARD_HEIGHT - 2) {
 				piece->type = TYPE_PAWN;
 			} else if (pos.y == 0 || pos.y == CHESS_BOARD_HEIGHT - 1) {
@@ -160,12 +163,14 @@ void board_init(struct game *game) {
 						break;
 				}
 			}
+			// set the color of the piece
 			piece->color = pos.y > CHESS_BOARD_HEIGHT / 2 ? COLOR_BLACK : COLOR_WHITE;
 		}
 	}
 }
 
 static int8_t abs8(int8_t x) {
+	// absolute value
 	return x < 0 ? -x : x;
 }
 
@@ -176,6 +181,8 @@ static int8_t sign(int8_t x) {
 }
 
 static struct position get_direction(struct position from, struct position to) {
+	// returns a vector representing the direction from one position to another
+	// does not work for the same position or for an angle that is not a multiple of 45°
 	struct position delta = {to.x - from.x, to.y - from.y};
 	// no direction if the positions are the same
 	if (delta.x == 0 && delta.y == 0) goto none;
@@ -197,6 +204,7 @@ bool position_equal(struct position a, struct position b) {
 }
 
 bool position_valid_xy(int8_t x, int8_t y) {
+	// check if the position is within the bounds of the board
 	return x >= 0 && x < CHESS_BOARD_WIDTH && y >= 0 && y < CHESS_BOARD_HEIGHT;
 }
 
@@ -205,6 +213,7 @@ bool position_valid(struct position pos) {
 }
 
 struct piece *get_piece_xy(struct game *game, int8_t x, int8_t y) {
+	// get a pointer to the piece at the given position
 	if (!position_valid_xy(x, y)) return NULL;
 	return &game->board[y][x];
 }
@@ -214,6 +223,7 @@ struct piece *get_piece(struct game *game, struct position pos) {
 }
 
 static bool loop_pieces_between(struct position from, struct position to, bool (*callback)(struct position, struct game *, struct position from, struct position to, void *), struct game *game, void *data) {
+	// loop through all pieces between two positions, including the start and end positions
 	struct position pos = from;
 	struct position direction = get_direction(from, to);
 	if (direction.x == 0 && direction.y == 0) return false;
@@ -232,14 +242,17 @@ static bool match_piece(struct piece *piece, enum piece_type type, enum piece_co
 	return piece && piece->type == type && piece->color == color;
 }
 
+// internal functions for move handling
 static struct move_list *get_available_moves_internal(struct game *game, enum piece_color player, bool check_threat);
 static bool perform_move_internal(struct game *game, struct move move);
 
 static bool get_if_check(struct game *game, enum piece_color player) {
 	// check if the player is in check
+	// more specifically, if the opponent can "capture" the player's king
 	struct move_list *moves_ = get_available_moves_internal(game, get_opposite_color(player), true);
 	for (struct move_list *moves = moves_->next;
 	     moves; moves = moves->next) {
+		// ignore castling since they cannot capture a piece
 		if (moves->move.type == MOVE_CASTLE) continue;
 		struct piece *to = get_piece(game, moves->move.to);
 		if (!match_piece(to, TYPE_KING, player)) continue;
@@ -274,7 +287,7 @@ static struct move_list *alloc_move(struct game *game) {
 }
 
 struct move_list *add_move(struct game *game, struct move_list *list, struct move move) {
-	// add the move to the end of the list
+	// add the move to the start of the list
 	struct move_list *new = alloc_move(game);
 	new->move = move;
 
@@ -285,7 +298,8 @@ struct move_list *add_move(struct game *game, struct move_list *list, struct mov
 	return new;
 }
 
-static void add_move_end(struct game *game, struct move move) {
+static void add_move_list_end(struct game *game, struct move move) {
+	// add the move to the end of the list
 	if (game->move_list_tail) {
 		game->move_list_tail = add_move(game, game->move_list_tail, move);
 		return;
@@ -736,7 +750,7 @@ bool perform_move(struct game *game, struct move move) {
 	if (!result) return false;
 
 	// add the move to the move list
-	add_move_end(game, move);
+	add_move_list_end(game, move);
 
 	if (move.state.stalemate) {
 		if (move.state.check)
@@ -748,6 +762,7 @@ bool perform_move(struct game *game, struct move move) {
 }
 
 enum color_opt get_winner(struct game *game) {
+	// TODO: proper logic for win conditions
 	switch (game->win) {
 		case STATE_CHECKMATE_WHITE_WIN:
 		case STATE_TIMEOUT_WHITE_WIN:
@@ -779,6 +794,7 @@ char *get_move_string(struct game *game) {
 		if (player == COLOR_WHITE) {
 			if (i > 0) strcat(move, " "); // add space between full moves
 			char number[16];
+			// add move number
 			snprintf(number, 16, "%lu.", ++i);
 			strcat(move, number);
 		}
@@ -787,6 +803,7 @@ char *get_move_string(struct game *game) {
 		player = get_opposite_color(player);
 	}
 	if (game->win != STATE_NONE) {
+		// add the result of the game
 		switch (get_winner(game)) {
 			case OPT_WHITE:
 				strcat(move, "1-0");
@@ -910,7 +927,10 @@ enum find_move_reason find_move(struct game *game, struct move *out_move, const 
 	memcpy(input, input_, len + 1);
 
 	// lowercase
-	for (char *i = input; *i; ++i) *i = tolower(*i);
+	for (char *i = input; *i; ++i) {
+		if (*i >= 'A' && *i <= 'Z')
+			*i = *i - 'A' + 'a';
+	}
 
 	// trim check/checkmate
 	if (input[len - 1] == '#' || input[len - 1] == '+') {
@@ -921,6 +941,7 @@ enum find_move_reason find_move(struct game *game, struct move *out_move, const 
 	bool castle_king = false, castle_queen = false;
 	struct parse_move_result parse;
 
+	// castle notation
 	if (strcmp(input, "0-0") == 0 || strcmp(input, "00") == 0 || strcmp(input, "o-o") == 0 || strcmp(input, "oo") == 0) {
 		castle_king = true;
 	} else if (strcmp(input, "0-0-0") == 0 || strcmp(input, "000") == 0 || strcmp(input, "o-o-o") == 0 || strcmp(input, "ooo") == 0) {

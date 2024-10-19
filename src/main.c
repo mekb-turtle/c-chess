@@ -1,7 +1,5 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <ctype.h>
-#include <locale.h>
 #include <time.h>
 #include <string.h>
 #include <signal.h>
@@ -77,6 +75,14 @@ void atexit_func(void) {
 	exit_func(0);
 }
 
+static char to_lower(char c) {
+	// avoid ctype.h and locale issues
+	// this function is too short for a separate file
+	if (c >= 'A' && c <= 'Z')
+		c = c - 'A' + 'a';
+	return c;
+}
+
 int main() {
 	// handle signals
 	int signals[] = {SIGINT, SIGTERM, SIGHUP, SIGQUIT, 0};
@@ -84,7 +90,6 @@ int main() {
 		signal(signals[i], exit_func);
 	atexit(atexit_func);
 
-	setlocale(LC_ALL, "C");
 	srand(time(NULL));
 
 	while (true) {
@@ -119,7 +124,7 @@ int main() {
 		printf("%*s", 10, "");
 		printf("\n");
 		printf("Start (Enter)\n");
-		switch (tolower(scan_char(stdin, true))) {
+		switch (to_lower(scan_char(stdin, true))) {
 			case 'q':
 				options.player1.type = (options.player1.type + 1) % 3;
 				break;
