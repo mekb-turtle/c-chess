@@ -4,6 +4,7 @@
 #include <locale.h>
 #include <time.h>
 #include <string.h>
+#include <signal.h>
 
 #include "input.h"
 #include "chess.h"
@@ -58,7 +59,28 @@ void print_board_opt(struct game *game) {
 	print_board(options.display, options.view_flip, game, stdout);
 }
 
+static struct game *game = NULL;
+
+void exit_func(int sig) {
+	printf("Caught signal %d\n", sig);
+	if (game)
+		destroy_board(game);
+	game = NULL;
+	if (sig == 0 || sig == SIGINT) exit(0); // exit normally
+	exit(sig + 128);
+}
+
+void atexit_func(void) {
+
+}
+
 int main() {
+	// handle signals
+	int signals[] = {SIGINT, SIGTERM, SIGHUP, SIGQUIT, 0};
+	for (int i = 0; signals[i]; i++)
+		signal(signals[i], exit_func);
+	atexit(atexit_func);
+
 	setlocale(LC_ALL, "C");
 	srand(time(NULL));
 
@@ -123,7 +145,7 @@ int main() {
 	options.view_flip = options.player1_color == COLOR_BLACK;
 
 start:;
-	struct game *game = create_board(malloc, free);
+	game = create_board(malloc, free);
 	board_init(game);
 	while (true) {
 		print_board_opt(game);
@@ -161,5 +183,5 @@ start:;
 		}
 	}
 	print_board_opt(game);
-	destroy_board(game);
+	exit_func(0);
 }

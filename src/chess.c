@@ -238,21 +238,26 @@ static bool perform_move_internal(struct game *game, struct move move);
 
 static bool get_if_check(struct game *game, enum piece_color player) {
 	// check if the player is in check
-	for (struct move_list *moves = get_available_moves_internal(game, get_opposite_color(player), true)->next;
+	struct move_list *moves_ = get_available_moves_internal(game, get_opposite_color(player), true);
+	for (struct move_list *moves = moves_->next;
 	     moves; moves = moves->next) {
 		if (moves->move.type == MOVE_CASTLE) continue;
 		struct piece *to = get_piece(game, moves->move.to);
 		if (!match_piece(to, TYPE_KING, player)) continue;
 		// if the opponent can take the player's king, the player is in check
+		free_move_list(game, moves_);
 		return true;
 	}
+	free_move_list(game, moves_);
 	return false;
 }
 
 struct move_state get_move_state(struct game *game, enum piece_color player) {
 	struct move_state state = {.check = false};
 	// if the player has no legal moves, the game is in stalemate
-	state.stalemate = !get_available_moves_internal(game, player, false)->next;
+	struct move_list *moves = get_available_moves_internal(game, player, false);
+	state.stalemate = !moves->next;
+	free_move_list(game, moves);
 	// check if the player is in check
 	state.check = get_if_check(game, player);
 	// checkmate occurs if the player is in check and has no legal moves
@@ -351,11 +356,15 @@ static bool castle_check_no_attack_callback(struct position pos, struct game *ga
 	if (!piece) return false;
 
 	// the tiles the king moves through must not be under attack
-	for (struct move_list *moves = get_available_moves_internal(game, get_opposite_color((enum piece_color) data), true)->next;
+	struct move_list *moves_ = get_available_moves_internal(game, get_opposite_color((enum piece_color) data), true);
+	for (struct move_list *moves = moves_->next;
 	     moves; moves = moves->next) {
 		if (moves->move.type == MOVE_CASTLE) continue;
-		if (position_equal(moves->move.to, pos)) return false;
+		if (!position_equal(moves->move.to, pos)) continue;
+		free_move_list(game, moves_);
+		return false;
 	}
+	free_move_list(game, moves_);
 	return true;
 }
 
@@ -431,12 +440,11 @@ static bool filter_valid_moves(struct game *game, struct move_list *list, enum p
 				move->type = MOVE_PROMOTION;
 			// add all possible promotions
 			move->promote_to = TYPE_QUEEN;
-			// TODO: find out why this is causing infinite loop
-			// add_move(game, list, *move);
+			add_move(game, list, *move);
 			move->promote_to = TYPE_ROOK;
-			// add_move(game, list, *move);
+			add_move(game, list, *move);
 			move->promote_to = TYPE_BISHOP;
-			// add_move(game, list, *move);
+			add_move(game, list, *move);
 			move->promote_to = TYPE_KNIGHT;
 		}
 	}
@@ -619,7 +627,7 @@ static struct move_list *get_available_moves_internal(struct game *game, enum pi
 	filter_moves(game, list, player, filter_valid_moves, NULL);
 	if (!check_threat) // do not bother if we are checking for check/attacks to avoid infinite recursion
 		filter_moves(game, list, player, map_legal_moves, NULL);
-	return list; // skip the dummy node
+	return list;
 }
 
 struct move_list *get_legal_moves(struct game *game) {
@@ -633,8 +641,7 @@ struct move_list *get_legal_moves(struct game *game) {
 }
 
 void free_move_list(struct game *game, struct move_list *list) {
-	if (!list) return;
-	for (; list;) {
+	while (list) {
 		struct move_list *next = list->next;
 		game->free(list);
 		list = next;
@@ -762,7 +769,8 @@ char *get_move_string(struct game *game) {
 		++i;
 	}
 	// allocate based on the max size of a move string
-	char *move = game->malloc(i * (24 + sizeof(((struct move *) NULL)->notation)));
+	char *move = game->malloc(
+			i * (24 + sizeof(((struct move *) NULL)->notation)) + (8 * sizeof(char)) + 1);
 	// 24 characters to be safe, move number can theoretically be longer than 2-3 characters
 	*move = '\0';
 
@@ -886,6 +894,7 @@ enum find_move_reason find_move(struct game *game, struct move *out_move, const 
 		return REASON_WIN;
 	}
 
+	struct move_list *candidates = NULL;
 	enum find_move_reason result;
 	char *input = NULL;
 
@@ -924,7 +933,7 @@ enum find_move_reason find_move(struct game *game, struct move *out_move, const 
 		if (!parse.success) goto syntax;
 	}
 
-	struct move_list *candidates = alloc_move(game);
+	candidates = alloc_move(game);
 
 	for (struct move_list *moves = list; moves; moves = moves->next) {
 		struct move *move = &moves->move;
@@ -958,24 +967,24 @@ enum find_move_reason find_move(struct game *game, struct move *out_move, const 
 		add_move(game, candidates, *move);
 	}
 	// candidates has a dummy node, so the first move is candidates->next
-	candidates = candidates->next;
-	if (!candidates) {
+	struct move_list *c = candidates->next;
+	if (!c) {
 		// no moves found
 		result = REASON_NONE_FOUND;
 		goto end;
 	}
-	if (candidates->next) {
+	if (c->next) {
 		// more than one move found
 		result = REASON_AMBIGUOUS;
 		goto end;
 	}
 	// only one move found
 	// check if the move is legal
-	if (!candidates->move.legal) {
+	if (!c->move.legal) {
 		result = REASON_ILLEGAL;
 		goto end;
 	}
-	*out_move = candidates->move;
+	*out_move = c->move;
 	result = REASON_SUCCESS;
 	goto end;
 syntax:
@@ -983,5 +992,6 @@ syntax:
 end:
 	if (input) game->free(input);
 	free_move_list(game, list);
+	free_move_list(game, candidates);
 	return result;
 }
