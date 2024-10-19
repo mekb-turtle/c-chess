@@ -75,11 +75,11 @@ struct move {
 struct game {
 	void *(*malloc)(size_t);
 	void (*free)(void *);
+
 	struct piece board[CHESS_BOARD_HEIGHT][CHESS_BOARD_WIDTH];
 	enum piece_color active_color;
 	uint8_t castle_availability[2];
 	struct position en_passant_target;
-
 	uint8_t half_move;
 	size_t full_move;
 

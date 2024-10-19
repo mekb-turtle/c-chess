@@ -108,8 +108,7 @@ void destroy_board(struct game *game) {
 
 	free_move_list(game, game->move_list);
 
-	void (*free_)(void *) = game->free;
-	free_(game);
+	game->free(game);
 }
 
 void board_init(struct game *game) {

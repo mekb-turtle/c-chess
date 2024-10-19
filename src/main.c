@@ -62,16 +62,19 @@ void print_board_opt(struct game *game) {
 static struct game *game = NULL;
 
 void exit_func(int sig) {
-	printf("Caught signal %d\n", sig);
-	if (game)
-		destroy_board(game);
+	if (sig != 0) printf("\nCaught signal %d\n", sig);
+	destroy_board(game);
 	game = NULL;
-	if (sig == 0 || sig == SIGINT) exit(0); // exit normally
+	if (sig == 0) {
+		printf("Exiting\n");
+		return; // atexit cannot call exit
+	}
+	if (sig == SIGINT) exit(0); // exit normally
 	exit(sig + 128);
 }
 
 void atexit_func(void) {
-
+	exit_func(0);
 }
 
 int main() {
@@ -183,5 +186,5 @@ start:;
 		}
 	}
 	print_board_opt(game);
-	exit_func(0);
+	atexit_func();
 }
