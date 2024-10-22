@@ -286,19 +286,15 @@ static struct move_list *alloc_move(struct game *game) {
 	return new;
 }
 
-static void insert_move_list(struct move_list *list, struct move_list *new) {
-	// insert new node after the current node
-	// does not need to be at the end of the list since order does not matter
-	if (!new) return;
-	new->next = list->next;
-	list->next = new;
-}
-
 struct move_list *add_move(struct game *game, struct move_list *list, struct move move) {
 	// add the move to the start of the list
 	struct move_list *new = alloc_move(game);
 	new->move = move;
-	insert_move_list(list, new);
+
+	// insert new node after the current node
+	// does not need to be at the end of the list since order does not matter
+	new->next = list->next;
+	list->next = new;
 	return new;
 }
 
@@ -400,6 +396,7 @@ static void find_castle_moves(struct game *game, struct move_list *list, enum pi
 	// check if the pieces are the correct type
 	if (!match_piece(king_piece, TYPE_KING, player)) return;
 
+	// TODO: fix SEGFAULT
 	if ((game->castle_availability[player] & GAME_CASTLE_KING_SIDE) == GAME_CASTLE_KING_SIDE)
 		// confirm there are no pieces between the king and rook
 		if (loop_pieces_between(king, rook_king_side, castle_check_empty_callback, game, (void *) player))
@@ -649,7 +646,13 @@ static struct move_list *get_available_moves_internal(struct game *game, enum pi
 	struct move_list *end = alloc_move(game);
 	end->next = NULL;
 	filter_moves(game, list, player, filter_valid_moves, end);
-	insert_move_list(list, end->next);
+	for (struct move_list *m = list; m; m = m->next) {
+		if (!m->next) {
+			// found end, add the moves from the temp list
+			m->next = end->next;
+			break;
+		}
+	}
 	game->free(end);
 
 	if (!check_threat) // do not bother if we are checking for check/attacks to avoid infinite recursion
@@ -663,10 +666,6 @@ struct move_list *get_legal_moves(struct game *game) {
 	filter_moves(game, list, game->active_color, map_move_state, NULL);
 	filter_moves(game, list, game->active_color, annotate_moves, (void *) list->next);
 	struct move_list *new_list = list->next;
-	//TODO: remove test code
-	for(struct move_list *m = new_list; m; m = m->next){
-		printf("%s\n",m->move.notation);
-	}
 	game->free(list); // free the dummy node
 	return new_list;
 }
