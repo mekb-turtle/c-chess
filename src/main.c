@@ -61,6 +61,7 @@ static struct game *game = NULL;
 
 void exit_func(int sig) {
 	if (sig != 0) printf("\nCaught signal %d\n", sig);
+	input_exit(stdin);
 	destroy_board(game);
 	game = NULL;
 	if (sig == 0) {

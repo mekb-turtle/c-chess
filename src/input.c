@@ -7,9 +7,25 @@
 #include "display.h"
 #include "chess.h"
 
+static bool is_input = false;
+static struct termios old;
+static int fl = 0;
+
+void input_exit(FILE *fp) {
+	if (!is_input) return;
+	if (fcntl(fileno(fp), F_SETFL, fl) == -1) {
+		perror("fcntl");
+	}
+	if (tcsetattr(fileno(fp), TCSANOW, &old)) {
+		perror("tcsetattr");
+	}
+	is_input = false;
+}
+
 int scan_char(FILE *fp, bool blocking) {
+	bool exit_ = false;
 	// get old terminal settings
-	struct termios old, new;
+	struct termios new;
 	if (tcgetattr(fileno(fp), &old)) {
 		perror("tcgetattr");
 		exit(2);
@@ -23,11 +39,11 @@ int scan_char(FILE *fp, bool blocking) {
 		exit(2);
 	}
 
-	int fl = 0;
 	fl = fcntl(fileno(fp), F_GETFL);
 	if (fl == -1) {
 		perror("fcntl");
-		exit(2);
+		exit_ = true;
+		goto tcsetattr;
 	}
 	int new_fl = fl;
 	if (blocking)
@@ -36,20 +52,27 @@ int scan_char(FILE *fp, bool blocking) {
 		new_fl |= O_NONBLOCK;
 	if (fcntl(fileno(fp), F_SETFL, new_fl) == -1) {
 		perror("fcntl");
-		exit(2);
+		exit_ = true;
+		goto tcsetattr;
 	}
+	is_input = true;
 
 	int c = EOF;
 
 	c = fgetc(fp);
 	fflush(fp);
 
-	if (tcsetattr(fileno(fp), TCSANOW, &old)) {
-		perror("tcsetattr");
-		exit(2);
-	}
 	if (fcntl(fileno(fp), F_SETFL, fl) == -1) {
 		perror("fcntl");
+		exit_ = true;
+	}
+tcsetattr:
+	if (tcsetattr(fileno(fp), TCSANOW, &old)) {
+		perror("tcsetattr");
+		exit_ = true;
+	}
+	if (exit_) {
+		is_input = false;
 		exit(2);
 	}
 	return c;
