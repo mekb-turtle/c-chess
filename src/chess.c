@@ -395,7 +395,6 @@ static void find_castle_moves(struct game *game, struct move_list *list, enum pi
 	// check if the pieces are the correct type
 	if (!match_piece(king_piece, TYPE_KING, player)) return;
 
-	// TODO: fix SEGFAULT
 	if ((game->castle_availability[player] & GAME_CASTLE_KING_SIDE) == GAME_CASTLE_KING_SIDE)
 		// confirm there are no pieces between the king and rook
 		if (loop_pieces_between(king, rook_king_side, castle_check_empty_callback, game, (void *) player))
@@ -452,7 +451,6 @@ static bool filter_valid_moves(struct game *game, struct move_list *list, enum p
 				move->type = MOVE_PROMOTION;
 			// add all possible promotions to end of list which isn't filtered to avoid infinite loop
 			// for some reason, checking to see if move->type is already set doesn't work
-			// TODO: figure out why end only works for one move
 			move->promote_to = TYPE_QUEEN;
 			add_move(game, end, *move);
 			move->promote_to = TYPE_ROOK;
