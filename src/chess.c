@@ -286,15 +286,19 @@ static struct move_list *alloc_move(struct game *game) {
 	return new;
 }
 
+static void insert_move_list(struct move_list *list, struct move_list *new) {
+	// insert new node after the current node
+	// does not need to be at the end of the list since order does not matter
+	if (!new) return;
+	new->next = list->next;
+	list->next = new;
+}
+
 struct move_list *add_move(struct game *game, struct move_list *list, struct move move) {
 	// add the move to the start of the list
 	struct move_list *new = alloc_move(game);
 	new->move = move;
-
-	// insert new node after the current node
-	// does not need to be at the end of the list since order does not matter
-	new->next = list->next;
-	list->next = new;
+	insert_move_list(list, new);
 	return new;
 }
 
@@ -428,7 +432,7 @@ static void filter_moves(struct game *game, struct move_list *list, enum piece_c
 }
 
 static bool filter_valid_moves(struct game *game, struct move_list *list, enum piece_color player, void *data) {
-	(void) data;
+	struct move_list *end = (struct move_list *) data;
 	struct move *move = &list->move;
 	if (move->type == MOVE_CASTLE) return true;
 	struct piece *from = get_piece(game, move->from);
@@ -446,18 +450,19 @@ static bool filter_valid_moves(struct game *game, struct move_list *list, enum p
 		}
 		if (move->to.y == 0 || move->to.y == CHESS_BOARD_HEIGHT - 1) {
 			// important: this code MUST be after the en passant check since en_passant and promote_to are in the same union
-			if (move->type == MOVE_CAPTURE_PROMOTION || move->type == MOVE_PROMOTION) return true;
 			if (move->type == MOVE_CAPTURE)
 				move->type = MOVE_CAPTURE_PROMOTION;
 			else
 				move->type = MOVE_PROMOTION;
-			// add all possible promotions
+			// add all possible promotions to end of list which isn't filtered to avoid infinite loop
+			// for some reason, checking to see if move->type is already set doesn't work
+			// TODO: figure out why end only works for one move
 			move->promote_to = TYPE_QUEEN;
-			add_move(game, list, *move);
+			add_move(game, end, *move);
 			move->promote_to = TYPE_ROOK;
-			add_move(game, list, *move);
+			add_move(game, end, *move);
 			move->promote_to = TYPE_BISHOP;
-			add_move(game, list, *move);
+			add_move(game, end, *move);
 			move->promote_to = TYPE_KNIGHT;
 		}
 	}
@@ -522,23 +527,24 @@ static bool annotate_moves(struct game *game, struct move_list *list, enum piece
 
 		// check for ambiguous source file/rank
 		struct move_list *whole_list = (struct move_list *) data;
-		bool ambiguous_file = false, ambiguous_rank = false;
+		bool specify_file = false, specify_rank = false;
 		for (struct move_list *m = whole_list; m; m = m->next) {
-			if (m == list) continue; // skip the current move
+			if (position_equal(m->move.from, move->from)) continue; // skip the current move
 			if (position_equal(m->move.to, move->to)) {
 				struct piece *other = get_piece(game, m->move.from);
 				if (other->type == from->type) {
-					if (m->move.from.x == move->from.x) ambiguous_file = true;
-					if (m->move.from.y == move->from.y) ambiguous_rank = true;
+					if (m->move.from.x == move->from.x) specify_rank = true;
+					if (m->move.from.y == move->from.y) specify_file = true;
+					if (m->move.from.x != move->from.x && m->move.from.y != move->from.y) specify_file = true;
 				}
 			}
 		}
 
-		if (is_capture && is_pawn) ambiguous_file = true; // algebraic notation includes file if there is a capture even if it is not ambiguous
+		if (is_capture && is_pawn) specify_file = true; // algebraic notation includes file if there is a capture even if it is not ambiguous
 
 		// add the source file/rank
-		if (ambiguous_file) notation[i++] = file_to_char(move->from.x);
-		if (ambiguous_rank) notation[i++] = rank_to_char(move->from.y);
+		if (specify_file) notation[i++] = file_to_char(move->from.x);
+		if (specify_rank) notation[i++] = rank_to_char(move->from.y);
 
 		// add the capture symbol
 		if (is_capture) notation[i++] = 'x';
@@ -636,8 +642,16 @@ static struct move_list *get_available_moves_internal(struct game *game, enum pi
 			}
 		}
 	}
+
 	find_castle_moves(game, list, player);
-	filter_moves(game, list, player, filter_valid_moves, NULL);
+
+	// create temp list to avoid infinite loop in filter_valid_moves
+	struct move_list *end = alloc_move(game);
+	end->next = NULL;
+	filter_moves(game, list, player, filter_valid_moves, end);
+	insert_move_list(list, end->next);
+	game->free(end);
+
 	if (!check_threat) // do not bother if we are checking for check/attacks to avoid infinite recursion
 		filter_moves(game, list, player, map_legal_moves, NULL);
 	return list;
@@ -649,6 +663,10 @@ struct move_list *get_legal_moves(struct game *game) {
 	filter_moves(game, list, game->active_color, map_move_state, NULL);
 	filter_moves(game, list, game->active_color, annotate_moves, (void *) list->next);
 	struct move_list *new_list = list->next;
+	//TODO: remove test code
+	for(struct move_list *m = new_list; m; m = m->next){
+		printf("%s\n",m->move.notation);
+	}
 	game->free(list); // free the dummy node
 	return new_list;
 }
