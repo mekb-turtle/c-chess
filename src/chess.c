@@ -227,14 +227,13 @@ static bool loop_pieces_between(struct position from, struct position to, bool (
 	struct position pos = from;
 	struct position direction = get_direction(from, to);
 	if (direction.x == 0 && direction.y == 0) return false;
-	while (!position_equal(pos, to)) {
+	while (true) {
 		if (!position_valid(pos)) return false;
 		if (!callback(pos, game, from, to, data)) return false;
+		if (position_equal(pos, to)) return true;
 		pos.x += direction.x;
 		pos.y += direction.y;
 	}
-	if (!position_valid(pos)) return false;
-	return callback(pos, game, from, to, data); // pos == to
 }
 
 // shorthand function
