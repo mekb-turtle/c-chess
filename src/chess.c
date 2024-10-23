@@ -637,8 +637,6 @@ static struct move_list *get_available_moves_internal(struct game *game, enum pi
 		}
 	}
 
-	find_castle_moves(game, list, player);
-
 	// create temp list to avoid infinite loop in filter_valid_moves
 	struct move_list *end = alloc_move(game);
 	end->next = NULL;
@@ -652,8 +650,11 @@ static struct move_list *get_available_moves_internal(struct game *game, enum pi
 	}
 	game->free(end);
 
-	if (!check_threat) // do not bother if we are checking for check/attacks to avoid infinite recursion
-		filter_moves(game, list, player, map_legal_moves, NULL);
+	if (check_threat) return list; // do not bother if we are checking for check/attacks to avoid infinite recursion
+
+	find_castle_moves(game, list, player);
+
+	filter_moves(game, list, player, map_legal_moves, NULL);
 	return list;
 }
 
@@ -798,7 +799,7 @@ char *get_move_string(struct game *game) {
 	}
 	// allocate based on the max size of a move string
 	char *move = game->malloc(
-			i * (24 + sizeof(((struct move *) NULL)->notation)) + (8 * sizeof(char)) + 1);
+	        i * (24 + sizeof(((struct move *) NULL)->notation)) + (8 * sizeof(char)) + 1);
 	// 24 characters to be safe, move number can theoretically be longer than 2-3 characters
 	*move = '\0';
 
