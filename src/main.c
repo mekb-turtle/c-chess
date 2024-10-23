@@ -58,6 +58,7 @@ void print_board_opt(struct game *game) {
 }
 
 static struct game *game = NULL;
+static bool clean_exit = false;
 
 void exit_func(int sig) {
 	if (sig != 0) printf("\nCaught signal %d\n", sig);
@@ -68,6 +69,7 @@ void exit_func(int sig) {
 		printf("Exiting\n");
 		return; // atexit cannot call exit
 	}
+	if (clean_exit) exit(0); // exit normally
 	if (sig == SIGINT) exit(0); // exit normally
 	exit(sig + 128);
 }
@@ -159,6 +161,12 @@ start:;
 	while (true) {
 		print_board_opt(game);
 
+		struct move_list *list = get_legal_moves(game);
+		if (!list) {
+			printf("No legal moves\n");
+			break;
+		}
+
 		if (game->win != STATE_NONE) {
 			printf("Game over\n");
 			break;
@@ -166,6 +174,7 @@ start:;
 
 		switch (get_player_type(game->active_color)) {
 			case PLAYER_LOCAL:;
+				free_move_list(game, list);
 				struct move move = prompt_for_move(options.display, game, stdout, stdin, &options.view_flip, print_board_opt);
 				if (!perform_move(game, move)) {
 					printf("Failed to perform move\n");
@@ -176,11 +185,6 @@ start:;
 			case PLAYER_SOCKET:;
 				printf("%s's move\n", game->active_color == COLOR_WHITE ? "White" : "Black");
 				// TODO: implement
-				struct move_list *list = get_legal_moves(game);
-				if (!list) {
-					printf("No legal moves\n");
-					break;
-				}
 				// pick first legal move
 				printf("Playing %s\n", list->move.notation);
 				if (!perform_move(game, list->move)) {
@@ -191,6 +195,6 @@ start:;
 				break;
 		}
 	}
-	print_board_opt(game);
+	clean_exit = true;
 	atexit_func();
 }
