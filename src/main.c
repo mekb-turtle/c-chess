@@ -58,8 +58,9 @@ static bool clean_exit = false;
 void exit_func(int sig) {
 	if (sig != 0) eprintf("\nCaught signal %d\n", sig);
 	if (game) {
-		printf("Moves:\n");
-		print_moves(game, stdout);
+		static bool printed_once = false;
+		if (!printed_once) print_moves(game, stdout);
+		printed_once = true;
 	}
 	input_exit(stdin);
 	destroy_board(game);

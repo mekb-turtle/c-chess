@@ -17,7 +17,8 @@ static bool print_line(struct display_settings display, char **line, FILE *fp) {
 				max_len = i;
 	}
 	if (i < limit) max_len = i; // end of string
-	else if (!max_len) max_len = i - 1;
+	else if (!max_len)
+		max_len = i - 1;
 	if (max_len) {
 		if (display.color) {
 			fprintf(fp, "\x1b[1;47;30m \x1b[0m");
@@ -107,8 +108,7 @@ static void print_files(struct display_settings display, char **line, FILE *fp) 
 
 void print_moves(struct game *game, FILE *fp) {
 	char *move_str = get_move_string(game);
-	fputs(move_str, fp);
-	fputc('\n', fp);
+	fprintf(fp, "Moves:\n%s\n", move_str);
 	game->free(move_str);
 }
 
