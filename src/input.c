@@ -136,7 +136,7 @@ reprint_move:
 			fprintf(out, "\x1b[G%*s\x1b[%iF%*s\x1b[G", (int) str_len, "", 3 + CHESS_BOARD_HEIGHT, 30, "");
 			print(game);
 			goto reprint_move;
-		} else if (c == '\n' || c == '\r') {
+		} else if (c == '\n' || c == '\r' || c == ' ') {
 			if (reason == REASON_SUCCESS) {
 				fprintf(out, "\n");
 				return move;
