@@ -730,14 +730,14 @@ static bool perform_move_internal(struct game *game, struct move move) {
 
 		// capture the pawn en passant
 		if (move.type == MOVE_CAPTURE && move.en_passant) {
-			struct piece *en_passant_piece = get_piece(game, game->en_passant_target);
+			struct piece *en_passant_piece = get_piece(game, POS(move.to.x, move.from.y));
 			if (en_passant_piece) {
 				en_passant_piece->type = TYPE_NONE;
 			}
 		}
 
 		// update the en passant target
-		if (from_piece->type == TYPE_PAWN && abs8(move.from.y - move.to.y) == 2) {
+		if (to_piece->type == TYPE_PAWN && abs8(move.from.y - move.to.y) == 2) {
 			game->en_passant_target = POS(move.from.x, (move.from.y + move.to.y) / 2);
 		} else {
 			game->en_passant_target.x = 0;
