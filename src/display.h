@@ -10,5 +10,6 @@ struct display_settings {
 void print_colored(struct display_settings display, enum piece_color color, char *str, FILE *fp);
 void print_color(struct display_settings display, enum piece_color color, FILE *fp);
 void print_bool(struct display_settings display, bool state, FILE *fp);
+void print_moves(struct game *game, FILE *fp);
 void print_board(struct display_settings display, struct game *game, FILE *fp);
 #endif

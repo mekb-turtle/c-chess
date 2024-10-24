@@ -807,6 +807,10 @@ char *get_move_string(struct game *game) {
 	// allocate based on the max size of a move string
 	char *move = game->malloc(
 	        i * (24 + sizeof(((struct move *) NULL)->notation)) + (8 * sizeof(char)) + 1);
+	if (!move) {
+		perror("malloc");
+		exit(1);
+	}
 	// 24 characters to be safe, move number can theoretically be longer than 2-3 characters
 	*move = '\0';
 

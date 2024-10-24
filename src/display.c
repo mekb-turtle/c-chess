@@ -105,6 +105,13 @@ static void print_files(struct display_settings display, char **line, FILE *fp) 
 	fprintf(fp, "\n");
 }
 
+void print_moves(struct game *game, FILE *fp) {
+	char *move_str = get_move_string(game);
+	fputs(move_str, fp);
+	fputc('\n', fp);
+	game->free(move_str);
+}
+
 void print_board(struct display_settings display, struct game *game, FILE *fp) {
 	char *move_str = get_move_string(game);
 	char *whole_move_str = move_str;
