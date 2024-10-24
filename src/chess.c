@@ -174,6 +174,13 @@ static int8_t abs8(int8_t x) {
 	return x < 0 ? -x : x;
 }
 
+static uint8_t log10_8(int8_t x) {
+	// log base 10 rounded down
+	uint8_t log = 0;
+	for (; x >= 10; x /= 10, ++log);
+	return log;
+}
+
 static int8_t sign(int8_t x) {
 	if (x > 0) return 1;
 	if (x < 0) return -1;
@@ -932,40 +939,65 @@ enum find_move_reason find_move(struct game *game, struct move *out_move, const 
 	size_t len = strlen(input_);
 	if (len > 16 || len < 2) goto syntax;
 
-	// recreate the string
-	input = game->malloc(len + 1);
-	if (!input) {
-		perror("malloc");
-		free_move_list(game, list);
-		exit(1);
-	}
-	memcpy(input, input_, len + 1);
-
-	// lowercase
-	for (char *i = input; *i; ++i) {
-		if (*i >= 'A' && *i <= 'Z')
-			*i = *i - 'A' + 'a';
-	}
-
-	// trim check/checkmate
-	if (input[len - 1] == '#' || input[len - 1] == '+') {
-		input[len - 1] = '\0';
-		--len;
-	}
-
 	bool castle_king = false, castle_queen = false;
 	struct parse_move_result parse;
 
-	// castle notation
-	if (strcmp(input, "0-0") == 0 || strcmp(input, "00") == 0 || strcmp(input, "o-o") == 0 || strcmp(input, "oo") == 0) {
-		castle_king = true;
-	} else if (strcmp(input, "0-0-0") == 0 || strcmp(input, "000") == 0 || strcmp(input, "o-o-o") == 0 || strcmp(input, "ooo") == 0) {
-		castle_queen = true;
-	} else {
-		parse = parse_move_internal(input, false);
-		// work around flaw in parsing logic
-		if (!parse.success) parse = parse_move_internal(input, true);
-		if (!parse.success) goto syntax;
+	{ // block code to avoid 'jump into scope of identifier with variably modified type'
+		// recreate the string
+		char input__[len + 1];
+		input = input__;
+		memset(input, 0, len + 1);
+
+		for (char *new_i = input; *input_; ++input_) {
+			switch (*input_) {
+				// ignore whitespace
+				case ' ':
+				case '\t':
+				case '\n':
+				case '\r':
+					break;
+				default:
+					*new_i = *input_;
+					// convert to lowercase
+					if (*new_i >= 'A' && *new_i <= 'Z')
+						*new_i = *new_i - 'A' + 'a';
+					++new_i;
+					break;
+			}
+		}
+
+		// trim move number
+		char move_no[log10_8(game->full_move) + 4];
+		snprintf(move_no, sizeof(move_no), "%lu.", game->full_move);
+		size_t move_no_len = strlen(move_no);
+		if (strncmp(input, move_no, move_no_len) == 0) {
+			input += move_no_len;
+			len -= move_no_len;
+			while (*input == '.') {
+				// trim any extra dots
+				++input;
+				--len;
+			}
+		}
+
+
+		// trim check/checkmate
+		if (input[len - 1] == '#' || input[len - 1] == '+') {
+			input[len - 1] = '\0';
+			--len;
+		}
+
+		// castle notation
+		if (strcmp(input, "0-0") == 0 || strcmp(input, "00") == 0 || strcmp(input, "o-o") == 0 || strcmp(input, "oo") == 0) {
+			castle_king = true;
+		} else if (strcmp(input, "0-0-0") == 0 || strcmp(input, "000") == 0 || strcmp(input, "o-o-o") == 0 || strcmp(input, "ooo") == 0) {
+			castle_queen = true;
+		} else {
+			parse = parse_move_internal(input, false);
+			// work around flaw in parsing logic
+			if (!parse.success) parse = parse_move_internal(input, true);
+			if (!parse.success) goto syntax;
+		}
 	}
 
 	candidates = alloc_move(game);
@@ -1025,7 +1057,6 @@ enum find_move_reason find_move(struct game *game, struct move *out_move, const 
 syntax:
 	result = REASON_SYNTAX;
 end:
-	if (input) game->free(input);
 	free_move_list(game, list);
 	free_move_list(game, candidates);
 	return result;
