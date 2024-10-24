@@ -86,34 +86,36 @@ static void print_piece(struct display_settings display, struct piece p, FILE *f
 			c[2] = '\x93' + p.type + (p.color == COLOR_BLACK || display.color ? 6 : 0);
 		}
 	}
+	if (display.extra_space) c[strlen(c)] = ' ';
 	if (p.type == TYPE_NONE)
 		fprintf(fp, "%s", c);
 	else
 		print_colored(display, p.color, c, fp);
 }
 
-void print_files(struct display_settings display, bool flip, char **line, FILE *fp) {
+static void print_files(struct display_settings display, char **line, FILE *fp) {
 	fprintf(fp, "  ");
 	for (uint8_t x_ = 0; x_ < CHESS_BOARD_WIDTH; x_++) {
-		uint8_t x = flip ? CHESS_BOARD_WIDTH - 1 - x_ : x_;
+		uint8_t x = display.view_flip ? CHESS_BOARD_WIDTH - 1 - x_ : x_;
 		fprintf(fp, "%c ", file_to_char(x));
+		if (display.extra_space) fprintf(fp, " ");
 	}
 	fprintf(fp, "  ");
 	print_line(display, line, fp);
 	fprintf(fp, "\n");
 }
 
-void print_board(struct display_settings display, bool flip, struct game *game, FILE *fp) {
+void print_board(struct display_settings display, struct game *game, FILE *fp) {
 	char *move_str = get_move_string(game);
 	char *whole_move_str = move_str;
 
-	print_files(display, flip, &move_str, fp);
+	print_files(display, &move_str, fp);
 	for (uint8_t y_ = 0; y_ < CHESS_BOARD_HEIGHT; y_++) {
 		// flip if necessary
-		uint8_t y = flip ? y_ : CHESS_BOARD_HEIGHT - 1 - y_;
+		uint8_t y = display.view_flip ? y_ : CHESS_BOARD_HEIGHT - 1 - y_;
 		fprintf(fp, "%c ", rank_to_char(y));
 		for (uint8_t x_ = 0; x_ < CHESS_BOARD_WIDTH; x_++) {
-			uint8_t x = flip ? CHESS_BOARD_WIDTH - 1 - x_ : x_;
+			uint8_t x = display.view_flip ? CHESS_BOARD_WIDTH - 1 - x_ : x_;
 			struct piece *p = get_piece(game, POS(x, y));
 			print_piece(display, *p, fp);
 			fprintf(fp, " ");
@@ -122,6 +124,6 @@ void print_board(struct display_settings display, bool flip, struct game *game, 
 		print_line(display, &move_str, fp);
 		fprintf(fp, "\n");
 	}
-	print_files(display, flip, &move_str, fp);
+	print_files(display, &move_str, fp);
 	game->free(whole_move_str);
 }

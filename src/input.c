@@ -131,9 +131,11 @@ reprint_move:
 		int c = scan_char(in, true);
 		if (c == '\t') {
 			*view_flip = !*view_flip;
-			fprintf(out, "\x1b[G%*s\x1b[G", (int) str_len, "");
+			if (display.color)
+				fprintf(out, "\x1b[0m");
+			fprintf(out, "\x1b[G%*s\x1b[%iF%*s\x1b[G", (int) str_len, "", 3 + CHESS_BOARD_HEIGHT, 30, "");
 			print(game);
-			continue;
+			goto reprint_move;
 		} else if (c == '\n' || c == '\r') {
 			if (reason == REASON_SUCCESS) {
 				fprintf(out, "\n");

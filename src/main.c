@@ -3,10 +3,13 @@
 #include <time.h>
 #include <string.h>
 #include <signal.h>
+#include <getopt.h>
 
 #include "input.h"
 #include "chess.h"
 #include "display.h"
+
+#define eprintf(...) fprintf(stderr, __VA_ARGS__)
 
 struct options {
 	struct player {
@@ -17,14 +20,9 @@ struct options {
 		} type;
 		char *path;
 	} player1, player2;
-	enum player_color {
-		PLAYER_WHITE = 0,
-		PLAYER_BLACK = 1,
-		PLAYER_RANDOM = 2
-	} player1_color_select;
 	enum piece_color player1_color;
-	bool view_flip;
 	struct display_settings display;
+	char *socket;
 };
 
 char *player_type_to_str(enum player_type type) {
@@ -40,9 +38,6 @@ char *player_type_to_str(enum player_type type) {
 }
 
 static struct options options = {
-        .player1 = {.type = PLAYER_LOCAL},
-        .player2 = {.type = PLAYER_LOCAL},
-        .player1_color_select = PLAYER_WHITE,
         .display = {
                     .unicode = false,
                     .color = true}
@@ -54,22 +49,22 @@ static enum player_type get_player_type(enum piece_color color) {
 }
 
 void print_board_opt(struct game *game) {
-	print_board(options.display, options.view_flip, game, stdout);
+	print_board(options.display, game, stdout);
 }
 
 static struct game *game = NULL;
 static bool clean_exit = false;
 
 void exit_func(int sig) {
-	if (sig != 0) printf("\nCaught signal %d\n", sig);
+	if (sig != 0) eprintf("\nCaught signal %d\n", sig);
 	input_exit(stdin);
 	destroy_board(game);
 	game = NULL;
 	if (sig == 0) {
-		printf("Exiting\n");
+		eprintf("Exiting\n");
 		return; // atexit cannot call exit
 	}
-	if (clean_exit) exit(0); // exit normally
+	if (clean_exit) exit(0);    // exit normally
 	if (sig == SIGINT) exit(0); // exit normally
 	exit(sig + 128);
 }
@@ -78,84 +73,146 @@ void atexit_func(void) {
 	exit_func(0);
 }
 
-static char to_lower(char c) {
-	// avoid ctype.h and locale issues
-	// this function is too short for a separate file
-	if (c >= 'A' && c <= 'Z')
-		c = c - 'A' + 'a';
-	return c;
+static void parse_player(char *str, struct player *player, bool *invalid) {
+	if (*invalid) return;
+	if (!str) goto invalid;
+	if (strcmp(str, "player") == 0 || strcmp(str, "p") == 0) {
+		player->type = PLAYER_LOCAL;
+		player->path = NULL;
+	} else if (strncmp(str, "engine:", 7) == 0 || strncmp(str, "e:", 2) == 0) {
+		char *p = strchr(str, ':');
+		if (!p || p[1] == '\0') goto invalid;
+		player->type = PLAYER_ENGINE;
+		player->path = &p[1];
+	} else if (strncmp(str, "socket:", 7) == 0 || strncmp(str, "s:", 2) == 0) {
+		char *p = strchr(str, ':');
+		if (!p || p[1] == '\0') goto invalid;
+		player->type = PLAYER_SOCKET;
+		player->path = &p[1];
+	} else {
+	invalid:
+		*invalid = true;
+	}
 }
 
-int main() {
+static void parse_bool(char *str, bool *value, bool *invalid) {
+	if (*invalid) return;
+	if (!str) {
+		*value = true;
+		return;
+	}
+	if (strcmp(str, "yes") == 0 || strcmp(str, "y") == 0 || strcmp(str, "on") == 0)
+		*value = true;
+	else if (strcmp(str, "no") == 0 || strcmp(str, "n") == 0 || strcmp(str, "off") == 0)
+		*value = false;
+	else
+		*invalid = true;
+}
+
+int main(int argc, char *argv[]) {
+	srand(time(NULL));
+
+	bool invalid = false, player1_set = false, player2_set = false, player1_color_set = false, unicode_set = false, color_set = false, space_set = false;
+
+	int opt;
+	while ((opt = getopt_long(argc, argv, ":hV1:2:c:u:C:T:s:", (struct option[]){
+	                                                                   {"help",          no_argument,       0, 'h'},
+	                                                                   {"version",       no_argument,       0, 'V'},
+	                                                                   {"player1",       required_argument, 0, '1'},
+	                                                                   {"player2",       required_argument, 0, '2'},
+	                                                                   {"player1_color", required_argument, 0, 'c'},
+	                                                                   {"unicode",       required_argument, 0, 'u'},
+	                                                                   {"color",         required_argument, 0, 'C'},
+	                                                                   {"space",         required_argument, 0, 'T'},
+	                                                                   {"socket",        required_argument, 0, 's'},
+	                                                                   {0,               0,                 0, 0  }
+    },
+	                          NULL)) != -1) {
+		switch (opt) {
+			case 'h':
+				printf("Usage: %s [options)\n", argv[0]);
+				printf("Options:\n");
+				printf("  -h, --help\n");
+				printf("  -V, --version\n");
+				printf("  -1, --player1 (player|socket:<path>|engine:<path>)\n");
+				printf("  -2, --player2 (player|socket:<path>|engine:<path>)\n");
+				printf("  -c, --player1_color (white|black|random)\n");
+				printf("  -u, --unicode (on|yes|off|no)\n");
+				printf("  -C, --color (on|yes|off|no)\n");
+				printf("  -T, --space (on|yes|off|no)\n");
+				printf("  -S, --socket <path> - Connect to player socket (incompatible with -1, -2, -q)\n");
+				return 0;
+			case 'V':
+				printf("Chess %s\n", PROJECT_VERSION);
+				return 0;
+			case '1':
+				if (player1_set) invalid = true;
+				else
+					parse_player(optarg, &options.player1, &invalid);
+				player1_set = true;
+				break;
+			case '2':
+				if (player2_set) invalid = true;
+				else
+					parse_player(optarg, &options.player2, &invalid);
+				player2_set = true;
+				break;
+			case 'c':
+				if (player1_color_set) invalid = true;
+				else if (!optarg)
+					invalid = true;
+				else if (strcmp(optarg, "white") == 0 || strcmp(optarg, "w") == 0)
+					options.player1_color = COLOR_WHITE;
+				else if (strcmp(optarg, "black") == 0 || strcmp(optarg, "b") == 0)
+					options.player1_color = COLOR_BLACK;
+				else if (strcmp(optarg, "random") == 0 || strcmp(optarg, "r") == 0)
+					options.player1_color = rand() % 2 ? COLOR_WHITE : COLOR_BLACK;
+				else
+					invalid = true;
+				player1_color_set = true;
+				break;
+			case 'u':
+				if (unicode_set) invalid = true;
+				else
+					parse_bool(optarg, &options.display.unicode, &invalid);
+				unicode_set = true;
+				break;
+			case 'C':
+				if (color_set) invalid = true;
+				else
+					parse_bool(optarg, &options.display.color, &invalid);
+				color_set = true;
+				break;
+			case 'T':
+				if (space_set) invalid = true;
+				else
+					parse_bool(optarg, &options.display.extra_space, &invalid);
+				space_set = true;
+				break;
+			case 'S':
+				if (options.socket) invalid = true;
+				else
+					options.socket = optarg;
+				break;
+			default:
+				invalid = true;
+				break;
+		}
+	}
+
+	if (optind != argc || invalid) {
+		eprintf("Invalid arguments\nTry --help for help\n");
+		exit(1);
+	}
+
+	options.display.view_flip = options.player1_color == COLOR_BLACK;
+
 	// handle signals
 	int signals[] = {SIGINT, SIGTERM, SIGHUP, SIGQUIT, 0};
 	for (int i = 0; signals[i]; i++)
 		signal(signals[i], exit_func);
 	atexit(atexit_func);
 
-	srand(time(NULL));
-
-	while (true) {
-		printf("Player 1 (Q/W): %s", player_type_to_str(options.player1.type));
-		if (options.player1.type != PLAYER_LOCAL && options.player1.path)
-			printf(" (%s)", options.player1.path);
-		printf("%*s", 10, "");
-		printf("\n");
-		printf("Player 2 (A/S): %s", player_type_to_str(options.player2.type));
-		if (options.player2.type != PLAYER_LOCAL && options.player2.path)
-			printf(" (%s)", options.player2.path);
-		printf("%*s", 10, "");
-		printf("\n");
-		printf("Player 1 Color (E): ");
-		switch (options.player1_color_select) {
-			case PLAYER_WHITE:
-			case PLAYER_BLACK:
-				print_color(options.display, (enum piece_color) options.player1_color_select, stdout);
-				break;
-			case PLAYER_RANDOM:
-				printf("Random");
-				break;
-		}
-		printf("%*s", 10, "");
-		printf("\n");
-		printf("Unicode (U): ");
-		print_bool(options.display, options.display.unicode, stdout);
-		printf("%*s", 10, "");
-		printf("\n");
-		printf("Color (I): ");
-		print_bool(options.display, options.display.color, stdout);
-		printf("%*s", 10, "");
-		printf("\n");
-		printf("Start (Enter)\n");
-		switch (to_lower(scan_char(stdin, true))) {
-			case 'q':
-				options.player1.type = (options.player1.type + 1) % 3;
-				break;
-			case 'a':
-				options.player2.type = (options.player2.type + 1) % 3;
-				break;
-			case 'e':
-				options.player1_color_select = (options.player1_color_select + 1) % 3;
-				break;
-			case 'u':
-				options.display.unicode = !options.display.unicode;
-				break;
-			case 'i':
-				options.display.color = !options.display.color;
-				break;
-			case '\n':
-			case '\r':
-				goto start;
-		}
-		printf("\x1b[6A");
-	}
-	if (options.player1_color_select == PLAYER_RANDOM)
-		options.player1_color = rand() % 2 ? COLOR_WHITE : COLOR_BLACK;
-	else
-		options.player1_color = (enum piece_color) options.player1_color_select;
-	options.view_flip = options.player1_color == COLOR_BLACK;
-
-start:;
 	game = create_board(malloc, free);
 	board_init(game);
 	while (true) {
@@ -163,7 +220,7 @@ start:;
 
 		struct move_list *list = get_legal_moves(game);
 		if (!list) {
-			printf("No legal moves\n");
+			eprintf("No legal moves\n");
 			break;
 		}
 
@@ -175,9 +232,9 @@ start:;
 		switch (get_player_type(game->active_color)) {
 			case PLAYER_LOCAL:;
 				free_move_list(game, list);
-				struct move move = prompt_for_move(options.display, game, stdout, stdin, &options.view_flip, print_board_opt);
+				struct move move = prompt_for_move(options.display, game, stdout, stdin, &options.display.view_flip, print_board_opt);
 				if (!perform_move(game, move)) {
-					printf("Failed to perform move\n");
+					eprintf("Failed to perform move\n");
 					exit(1);
 				}
 				break;
@@ -188,7 +245,7 @@ start:;
 				// pick first legal move
 				printf("Playing %s\n", list->move.notation);
 				if (!perform_move(game, list->move)) {
-					printf("Failed to perform move\n");
+					eprintf("Failed to perform move\n");
 					exit(1);
 				}
 				free_move_list(game, list);
