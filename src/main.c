@@ -212,6 +212,8 @@ int main(int argc, char *argv[]) {
 
 	options.display.view_flip = options.player1_color == COLOR_BLACK;
 
+	if (!options.display.unicode && !options.display.color) options.display.extra_space = false; // no point
+
 	// handle signals
 	int signals[] = {SIGINT, SIGTERM, SIGHUP, SIGQUIT, 0};
 	for (int i = 0; signals[i]; i++)

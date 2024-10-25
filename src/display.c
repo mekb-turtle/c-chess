@@ -101,6 +101,7 @@ static void print_files(struct display_settings display, char **line, FILE *fp) 
 		fprintf(fp, "%c ", file_to_char(x));
 	}
 	fprintf(fp, "  ");
+	if (display.extra_space) fprintf(fp, " ");
 	print_line(display, line, fp);
 	fprintf(fp, "\n");
 }
@@ -126,7 +127,7 @@ void print_board(struct display_settings display, struct game *game, FILE *fp) {
 			print_piece(display, *p, fp);
 			if (!display.extra_space) fprintf(fp, " ");
 		}
-		if (display.extra_space && (display.unicode || display.color)) fprintf(fp, " ");
+		if (display.extra_space) fprintf(fp, " ");
 		fprintf(fp, "%c ", rank_to_char(y));
 		print_line(display, &move_str, fp);
 		fprintf(fp, "\n");
