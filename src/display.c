@@ -99,7 +99,6 @@ static void print_files(struct display_settings display, char **line, FILE *fp) 
 	for (uint8_t x_ = 0; x_ < CHESS_BOARD_WIDTH; x_++) {
 		uint8_t x = display.view_flip ? CHESS_BOARD_WIDTH - 1 - x_ : x_;
 		fprintf(fp, "%c ", file_to_char(x));
-		if (display.extra_space) fprintf(fp, " ");
 	}
 	fprintf(fp, "  ");
 	print_line(display, line, fp);
@@ -125,8 +124,9 @@ void print_board(struct display_settings display, struct game *game, FILE *fp) {
 			uint8_t x = display.view_flip ? CHESS_BOARD_WIDTH - 1 - x_ : x_;
 			struct piece *p = get_piece(game, POS(x, y));
 			print_piece(display, *p, fp);
-			fprintf(fp, " ");
+			if (!display.extra_space) fprintf(fp, " ");
 		}
+		if (display.extra_space && (display.unicode || display.color)) fprintf(fp, " ");
 		fprintf(fp, "%c ", rank_to_char(y));
 		print_line(display, &move_str, fp);
 		fprintf(fp, "\n");
