@@ -852,7 +852,7 @@ static struct parse_move_result {
 	bool success;
 	enum piece_type type, promote_type;
 	int8_t file_from, rank_from, file_to, rank_to;
-} parse_move_internal(char *input, bool pawn_only) { // pawn_only is for moves like b4 where this code thinks the b is a bishop
+} parse_move_internal(char *input, bool pawn_only, char *input_no_lower, bool pawn_caps) { // pawn_only is for moves like b4 where this code thinks the b is a bishop
 	struct parse_move_result result = {
 	        .success = false,
 	        .type = TYPE_NONE,
@@ -861,6 +861,12 @@ static struct parse_move_result {
 	        .rank_from = -1,
 	        .file_to = -1,
 	        .rank_to = -1};
+	if (pawn_caps) {
+		// this is all because of the ambiguity of the piece 'B'ishop and the file 'b'
+		// e.g 1. d3 a5 2. Be3 a4 3. Bc5 a3 4. bxa3 (4. Bxa3)
+		if (input[0] != input_no_lower[0]) return result;
+		pawn_only = true;
+	}
 	size_t i = 0, j = strlen(input) - 1;
 	// get piece
 	if (pawn_only) {
@@ -962,9 +968,6 @@ enum find_move_reason find_move(struct game *game, struct move *out_move, const 
 					break;
 				default:
 					*new_i = *input_;
-					// convert to lowercase
-					if (*new_i >= 'A' && *new_i <= 'Z')
-						*new_i = *new_i - 'A' + 'a';
 					++new_i;
 					break;
 			}
@@ -991,15 +994,26 @@ enum find_move_reason find_move(struct game *game, struct move *out_move, const 
 			--len;
 		}
 
+		// copy input with original case
+		char input_no_lower[len + 1];
+		memcpy(input_no_lower, input, len + 1);
+
+		for (char *i = input; *input_; ++input_) {
+			// convert to lowercase
+			if (*i >= 'A' && *i <= 'Z')
+				*i = *i - 'A' + 'a';
+		}
+
 		// castle notation
 		if (strcmp(input, "0-0") == 0 || strcmp(input, "00") == 0 || strcmp(input, "o-o") == 0 || strcmp(input, "oo") == 0) {
 			castle_king = true;
 		} else if (strcmp(input, "0-0-0") == 0 || strcmp(input, "000") == 0 || strcmp(input, "o-o-o") == 0 || strcmp(input, "ooo") == 0) {
 			castle_queen = true;
 		} else {
-			parse = parse_move_internal(input, false);
+			parse = parse_move_internal(input, false, input_no_lower, true);
+			if (!parse.success) parse = parse_move_internal(input, false, input, false);
 			// work around flaw in parsing logic
-			if (!parse.success) parse = parse_move_internal(input, true);
+			if (!parse.success) parse = parse_move_internal(input, true, input, false);
 			if (!parse.success) goto syntax;
 		}
 	}
