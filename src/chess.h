@@ -91,16 +91,15 @@ struct game {
 	enum win_state {
 		STATE_NONE,
 
-		// TODO: detect checkmate
 		STATE_CHECKMATE_WHITE_WIN,
 		STATE_CHECKMATE_BLACK_WIN,
+
 		// TODO: detect timeout and handle resignation
 		STATE_TIMEOUT_WHITE_WIN,
 		STATE_TIMEOUT_BLACK_WIN,
 		STATE_RESIGNATION_WHITE_WIN,
 		STATE_RESIGNATION_BLACK_WIN,
 
-		// TODO: detect stalemate
 		STATE_STALEMATE,
 		// TODO: detect insufficient material
 		STATE_INSUFFICIENT_MATERIAL,         // both players have insufficient material

@@ -797,7 +797,6 @@ bool is_in_check(struct game *game) {
 }
 
 enum color_opt get_winner(struct game *game) {
-	// TODO: proper logic for win conditions
 	switch (game->win) {
 		case STATE_CHECKMATE_WHITE_WIN:
 		case STATE_TIMEOUT_WHITE_WIN:
