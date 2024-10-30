@@ -833,7 +833,7 @@ char *get_move_string(struct game *game) {
 			if (i > 0) strcat(move, " "); // add space between full moves
 			char number[16];
 			// add move number
-			snprintf(number, 16, "%lu.", ++i);
+			snprintf(number, 16, "%zu.", ++i);
 			strcat(move, number);
 		}
 		strcat(move, list->move.notation);
