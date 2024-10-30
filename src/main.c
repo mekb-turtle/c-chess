@@ -4,10 +4,15 @@
 #include <string.h>
 #include <signal.h>
 #include <getopt.h>
+#include <errno.h>
 
 #include "input.h"
 #include "chess.h"
 #include "display.h"
+#include "socket.h"
+
+#include <sys/un.h>
+#include <netinet/in.h>
 
 #define eprintf(...) fprintf(stderr, __VA_ARGS__)
 
@@ -23,6 +28,16 @@ struct options {
 	enum piece_color player1_color;
 	struct display_settings display;
 	char *socket;
+};
+
+struct server_options {
+	int player1_socket, player1_socket_client, player2_socket, player2_socket_client, client_socket;
+} server_opt = {
+        .player1_socket = -1,
+        .player1_socket_client = -1,
+        .player2_socket = -1,
+        .player2_socket_client = -1,
+        .client_socket = -1,
 };
 
 char *player_type_to_str(enum player_type type) {
@@ -65,6 +80,13 @@ void exit_func(int sig) {
 	input_exit(stdin);
 	destroy_board(game);
 	game = NULL;
+
+	if (server_opt.client_socket != -1) close(server_opt.client_socket);
+	if (server_opt.player1_socket != -1) close(server_opt.player1_socket);
+	if (server_opt.player1_socket_client != -1) close(server_opt.player1_socket_client);
+	if (server_opt.player2_socket != -1) close(server_opt.player2_socket);
+	if (server_opt.player2_socket_client != -1) close(server_opt.player2_socket_client);
+
 	if (sig == 0) {
 		eprintf("Exiting\n");
 		return; // atexit cannot call exit
@@ -212,6 +234,25 @@ int main(int argc, char *argv[]) {
 	if (optind != argc || invalid) {
 		eprintf("Invalid arguments\nTry --help for help\n");
 		exit(1);
+	}
+
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+#define MAX3(a, b, c) MAX(MAX(a, b), c)
+	const size_t sockaddr_len = MAX3(sizeof(struct sockaddr_un), sizeof(struct sockaddr_in), sizeof(struct sockaddr_in6));
+	// get max size to allocate sockaddr
+
+	char err[256];
+	if (options.socket) {
+		uint8_t sockaddr_[sockaddr_len];
+		struct sockaddr *sockaddr = (struct sockaddr *) sockaddr_;
+		if (!parse_address(options.socket, err, sizeof(err), sockaddr)) {
+			eprintf("Failed to create client: %s\n", err);
+			exit(1);
+		}
+		if ((server_opt.client_socket = create_socket(sockaddr)) == -1) {
+			perror("Failed to create client socket");
+			exit(1);
+		}
 	}
 
 	options.display.view_flip = options.player1_color == COLOR_BLACK;
