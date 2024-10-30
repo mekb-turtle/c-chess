@@ -140,6 +140,7 @@ struct move_list *get_legal_moves(struct game *game);
 enum find_move_reason find_move(struct game *game, struct move *out_move, const char *input);
 void free_move_list(struct game *game, struct move_list *list);
 bool perform_move(struct game *game, struct move move);
+bool is_in_check(struct game *game);
 
 enum color_opt get_winner(struct game *game);
 struct game *create_board(void *(*malloc_)(size_t), void (*free_)(void *));

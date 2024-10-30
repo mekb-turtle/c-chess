@@ -7,9 +7,13 @@
 struct display_settings {
 	bool unicode, color, view_flip, extra_space;
 };
-void print_colored(struct display_settings display, enum piece_color color, char *str, FILE *fp);
-void print_color(struct display_settings display, enum piece_color color, FILE *fp);
-void print_bool(struct display_settings display, bool state, FILE *fp);
+enum text_color {
+	TEXT_WHITE = 0,
+	TEXT_BLACK = 1,
+	TEXT_NONE = 2,
+	TEXT_RED = 3
+};
+void print_colored(struct display_settings display, enum text_color color, char *str, FILE *fp);
 void print_moves(struct game *game, FILE *fp);
 void print_board(struct display_settings display, struct game *game, FILE *fp);
 #endif

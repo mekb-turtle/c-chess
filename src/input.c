@@ -85,7 +85,7 @@ struct move prompt_for_move(struct display_settings display, struct game *game, 
 
 reprint_move:
 	fprintf(out, "Enter move: (");
-	print_color(display, game->active_color, stdout);
+	print_colored(display, (enum text_color) game->active_color, game->active_color == COLOR_WHITE ? "White" : "Black", stdout);
 	fprintf(out, ") ");
 	// print move number
 	fprintf(out, "%lu.", game->full_move);

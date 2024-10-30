@@ -37,37 +37,28 @@ static bool print_line(struct display_settings display, char **line, FILE *fp) {
 	return true;
 }
 
-void print_colored(struct display_settings display, enum piece_color color, char *str, FILE *fp) {
+void print_colored(struct display_settings display, enum text_color color, char *str, FILE *fp) {
 	if (!display.color) {
 		fprintf(fp, "%s", str);
 		return;
 	}
 	switch (color) {
-		case COLOR_WHITE:
+		case TEXT_WHITE:
 			fprintf(fp, "\x1b[1;47;30m%s\x1b[0m", str);
 			break;
-		case COLOR_BLACK:
+		case TEXT_BLACK:
 			fprintf(fp, "\x1b[1;40;37m%s\x1b[0m", str);
+			break;
+		case TEXT_RED:
+			fprintf(fp, "\x1b[1;41;37m%s\x1b[0m", str);
+			break;
+		default:
+			fprintf(fp, "%s", str);
 			break;
 	}
 }
 
-void print_color(struct display_settings display, enum piece_color color, FILE *fp) {
-	print_colored(display, color, color == COLOR_WHITE ? "White" : "Black", fp);
-}
-
-void print_bool(struct display_settings display, bool state, FILE *fp) {
-	if (!display.color) {
-		fprintf(fp, "%s", state ? "Yes" : "No");
-		return;
-	}
-	if (state)
-		fprintf(fp, "\x1b[1;42;30mYes\x1b[0m");
-	else
-		fprintf(fp, "\x1b[1;41;30mNo\x1b[0m");
-}
-
-static void print_piece(struct display_settings display, struct piece p, FILE *fp) {
+static void print_piece(struct display_settings display, struct piece p, bool in_check, enum piece_color active_color, FILE *fp) {
 	char c[6];
 	memset(c, 0, sizeof(c));
 	if (!display.unicode) {
@@ -88,10 +79,12 @@ static void print_piece(struct display_settings display, struct piece p, FILE *f
 		}
 	}
 	if (display.extra_space) c[strlen(c)] = ' ';
-	if (p.type == TYPE_NONE)
-		fprintf(fp, "%s", c);
-	else
-		print_colored(display, p.color, c, fp);
+	// color of piece
+	enum text_color color = (enum text_color)p.color;
+	if (p.type == TYPE_NONE) color = TEXT_NONE;
+	// highlight if in check
+	if (p.type == TYPE_KING && in_check && p.color == active_color) color = TEXT_RED;
+	print_colored(display, color, c, fp);
 }
 
 static void print_files(struct display_settings display, char **line, FILE *fp) {
@@ -116,6 +109,7 @@ void print_board(struct display_settings display, struct game *game, FILE *fp) {
 	char *move_str = get_move_string(game);
 	char *whole_move_str = move_str;
 
+	bool in_check = is_in_check(game);
 	print_files(display, &move_str, fp);
 	for (uint8_t y_ = 0; y_ < CHESS_BOARD_HEIGHT; y_++) {
 		// flip if necessary
@@ -124,7 +118,7 @@ void print_board(struct display_settings display, struct game *game, FILE *fp) {
 		for (uint8_t x_ = 0; x_ < CHESS_BOARD_WIDTH; x_++) {
 			uint8_t x = display.view_flip ? CHESS_BOARD_WIDTH - 1 - x_ : x_;
 			struct piece *p = get_piece(game, POS(x, y));
-			print_piece(display, *p, fp);
+			print_piece(display, *p, in_check, game->active_color, fp);
 			if (!display.extra_space) fprintf(fp, " ");
 		}
 		if (display.extra_space) fprintf(fp, " ");

@@ -791,6 +791,11 @@ bool perform_move(struct game *game, struct move move) {
 	return true;
 }
 
+bool is_in_check(struct game *game) {
+	if (!game->move_list_tail) return false;
+	return game->move_list_tail->move.state.check;
+}
+
 enum color_opt get_winner(struct game *game) {
 	// TODO: proper logic for win conditions
 	switch (game->win) {
