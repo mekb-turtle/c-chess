@@ -255,26 +255,33 @@ static bool perform_move_internal(struct game *game, struct move move);
 static bool get_if_check(struct game *game, enum piece_color player) {
 	// check if the player is in check
 	// more specifically, if the opponent can "capture" the player's king
-	struct move_list *moves_ = get_available_moves_internal(game, get_opposite_color(player), true);
-	for (struct move_list *moves = moves_->next;
-	     moves; moves = moves->next) {
+	struct move_list *moves = get_available_moves_internal(game, get_opposite_color(player), true);
+	for (struct move_list *m = moves->next;
+	     m; m = m->next) {
 		// ignore castling since they cannot capture a piece
-		if (moves->move.type == MOVE_CASTLE) continue;
-		struct piece *to = get_piece(game, moves->move.to);
+		if (m->move.type == MOVE_CASTLE) continue;
+		struct piece *to = get_piece(game, m->move.to);
 		if (!match_piece(to, TYPE_KING, player)) continue;
 		// if the opponent can take the player's king, the player is in check
-		free_move_list(game, moves_);
+		free_move_list(game, moves);
 		return true;
 	}
-	free_move_list(game, moves_);
+	free_move_list(game, moves);
 	return false;
 }
 
 struct move_state get_move_state(struct game *game, enum piece_color player) {
-	struct move_state state = {.check = false};
+	struct move_state state;
 	// if the player has no legal moves, the game is in stalemate
 	struct move_list *moves = get_available_moves_internal(game, player, false);
-	state.stalemate = !moves->next;
+	state.stalemate = true;
+	state.check = false;
+	// check if there are any legal moves
+	for (struct move_list *m = moves->next; m; m = m->next) {
+		if (!m->move.legal) continue;
+		state.stalemate = false;
+		break;
+	}
 	free_move_list(game, moves);
 	// check if the player is in check
 	state.check = get_if_check(game, player);
@@ -343,13 +350,9 @@ static void search_moves(struct game *game, struct move_list *list, struct posit
 			struct piece *piece = get_piece(game, new_pos);
 			if (!piece) break;
 
-			if (piece->type != TYPE_NONE) {
-				// stop searching if there is a same colored piece in the way
-				if (piece->color == game->active_color) break;
-			}
 			add_move(game, list, MOVE(pos, new_pos));
 
-			// stop searching if there is the opponent's piece in the way
+			// stop searching if there is a piece in the way
 			if (piece->type != TYPE_NONE) break;
 		}
 	}
@@ -605,7 +608,12 @@ static struct move_list *get_available_moves_internal(struct game *game, enum pi
 						struct position diagonal = POS(pos.x + offset, pos.y + direction);
 						struct piece *diagonal_piece = get_piece(game, diagonal);
 						if (!diagonal_piece) continue;
-						if ((diagonal_piece->type != TYPE_NONE && diagonal_piece->color != piece->color) || (position_equal(game->en_passant_target, diagonal))) {
+						if ((
+									diagonal_piece->type != TYPE_NONE && diagonal_piece->color != piece->color
+									) || (
+										position_equal(game->en_passant_target, diagonal) &&
+										game->en_passant_target.y != 0
+										)) {
 							// pawn can capture diagonally or en passant
 							add_move(game, list, MOVE(pos, diagonal));
 						}
