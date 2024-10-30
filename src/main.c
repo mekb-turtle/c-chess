@@ -145,7 +145,7 @@ int main(int argc, char *argv[]) {
 				printf("  -u, --unicode (on|yes|off|no)\n");
 				printf("  -C, --color (on|yes|off|no)\n");
 				printf("  -T, --space (on|yes|off|no)\n");
-				printf("  -S, --socket <path> - Connect to player socket (incompatible with -1, -2, -q)\n");
+				printf("  -s, --socket <path> - Connect to player socket (incompatible with -1, -2, -q)\n");
 				return 0;
 			case 'V':
 				printf("Chess %s\n", PROJECT_VERSION);
@@ -194,7 +194,7 @@ int main(int argc, char *argv[]) {
 					parse_bool(optarg, &options.display.extra_space, &invalid);
 				space_set = true;
 				break;
-			case 'S':
+			case 's':
 				if (options.socket) invalid = true;
 				else
 					options.socket = optarg;
@@ -203,6 +203,10 @@ int main(int argc, char *argv[]) {
 				invalid = true;
 				break;
 		}
+	}
+
+	if (options.socket && (player1_set || player2_set || player1_color_set)) {
+		invalid = true;
 	}
 
 	if (optind != argc || invalid) {
