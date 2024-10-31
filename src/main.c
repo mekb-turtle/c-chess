@@ -4,6 +4,7 @@
 #include <string.h>
 #include <signal.h>
 #include <getopt.h>
+#include <unistd.h>
 #include <errno.h>
 
 #include "input.h"
@@ -24,20 +25,13 @@ struct options {
 			PLAYER_SOCKET,
 		} type;
 		char *path;
+		int fd, client_fd;
+		char *fd_path;
 	} player1, player2;
 	enum piece_color player1_color;
 	struct display_settings display;
-	char *socket;
-};
-
-struct server_options {
-	int player1_socket, player1_socket_client, player2_socket, player2_socket_client, client_socket;
-} server_opt = {
-        .player1_socket = -1,
-        .player1_socket_client = -1,
-        .player2_socket = -1,
-        .player2_socket_client = -1,
-        .client_socket = -1,
+	char *client;
+	int client_fd;
 };
 
 char *player_type_to_str(enum player_type type) {
@@ -53,6 +47,9 @@ char *player_type_to_str(enum player_type type) {
 }
 
 static struct options options = {
+        .player1 = {.fd = -1, .client_fd = -1, .fd_path = NULL},
+        .player2 = {.fd = -1, .client_fd = -1, .fd_path = NULL},
+        .client_fd = -1,
         .display = {
                     .unicode = false,
                     .color = true}
@@ -63,12 +60,16 @@ static enum player_type get_player_type(enum piece_color color) {
 	return options.player2.type;
 }
 
+static struct game *game = NULL;
+static bool clean_exit = false;
+
+static struct player *get_current_player() {
+	return game->active_color == options.player1_color ? &options.player1 : &options.player2;
+}
+
 void print_board_opt(struct game *game) {
 	print_board(options.display, game, stdout);
 }
-
-static struct game *game = NULL;
-static bool clean_exit = false;
 
 void exit_func(int sig) {
 	if (sig != 0) eprintf("\nCaught signal %d\n", sig);
@@ -81,11 +82,11 @@ void exit_func(int sig) {
 	destroy_board(game);
 	game = NULL;
 
-	if (server_opt.client_socket != -1) close(server_opt.client_socket);
-	if (server_opt.player1_socket != -1) close(server_opt.player1_socket);
-	if (server_opt.player1_socket_client != -1) close(server_opt.player1_socket_client);
-	if (server_opt.player2_socket != -1) close(server_opt.player2_socket);
-	if (server_opt.player2_socket_client != -1) close(server_opt.player2_socket_client);
+	if (options.client_fd != -1) close(options.client_fd);
+	if (options.player1.fd != -1) close(options.player1.fd);
+	if (options.player1.client_fd != -1) close(options.player1.client_fd);
+	if (options.player2.fd != -1) close(options.player2.fd);
+	if (options.player2.client_fd != -1) close(options.player2.client_fd);
 
 	if (sig == 0) {
 		eprintf("Exiting\n");
@@ -168,6 +169,7 @@ int main(int argc, char *argv[]) {
 				printf("  -C, --color (on|yes|off|no)\n");
 				printf("  -T, --space (on|yes|off|no)\n");
 				printf("  -s, --socket <path> - Connect to player socket (incompatible with -1, -2, -q)\n");
+				printf("socket can be IP:PORT, IPv6:PORT, or unix socket path\n");
 				return 0;
 			case 'V':
 				printf("Chess %s\n", PROJECT_VERSION);
@@ -217,9 +219,9 @@ int main(int argc, char *argv[]) {
 				space_set = true;
 				break;
 			case 's':
-				if (options.socket) invalid = true;
+				if (options.client) invalid = true;
 				else
-					options.socket = optarg;
+					options.client = optarg;
 				break;
 			default:
 				invalid = true;
@@ -227,7 +229,7 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
-	if (options.socket && (player1_set || player2_set || player1_color_set)) {
+	if (options.client && (player1_set || player2_set || player1_color_set)) {
 		invalid = true;
 	}
 
@@ -236,21 +238,22 @@ int main(int argc, char *argv[]) {
 		exit(1);
 	}
 
-#define MAX(a, b) ((a) > (b) ? (a) : (b))
-#define MAX3(a, b, c) MAX(MAX(a, b), c)
-	const size_t sockaddr_len = MAX3(sizeof(struct sockaddr_un), sizeof(struct sockaddr_in), sizeof(struct sockaddr_in6));
-	// get max size to allocate sockaddr
-
 	char err[256];
-	if (options.socket) {
-		uint8_t sockaddr_[sockaddr_len];
-		struct sockaddr *sockaddr = (struct sockaddr *) sockaddr_;
-		if (!parse_address(options.socket, err, sizeof(err), sockaddr)) {
-			eprintf("Failed to create client: %s\n", err);
+	if (options.client) {
+		if (!create_client_socket(options.client, err, sizeof(err), &options.client_fd, NULL)) {
+			eprintf("%s\n", err);
 			exit(1);
 		}
-		if ((server_opt.client_socket = create_socket(sockaddr)) == -1) {
-			perror("Failed to create client socket");
+	}
+	if (options.player1.type == PLAYER_SOCKET) {
+		if (!create_server_socket(options.player1.path, err, sizeof(err), &options.player1.fd)) {
+			eprintf("%s\n", err);
+			exit(1);
+		}
+	}
+	if (options.player2.type == PLAYER_SOCKET) {
+		if (!create_server_socket(options.player2.path, err, sizeof(err), &options.player2.fd)) {
+			eprintf("%s\n", err);
 			exit(1);
 		}
 	}
@@ -281,27 +284,50 @@ int main(int argc, char *argv[]) {
 			break;
 		}
 
-		switch (get_player_type(game->active_color)) {
-			case PLAYER_LOCAL:;
-				free_move_list(game, list);
-				struct move move = prompt_for_move(options.display, game, stdout, stdin, &options.display.view_flip, print_board_opt);
-				if (!perform_move(game, move)) {
-					eprintf("Failed to perform move\n");
-					exit(1);
-				}
-				break;
-			case PLAYER_ENGINE:
-			case PLAYER_SOCKET:;
-				printf("%s's move\n", game->active_color == COLOR_WHITE ? "White" : "Black");
-				// TODO: implement
-				// pick first legal move
-				printf("Playing %s\n", list->move.notation);
-				if (!perform_move(game, list->move)) {
-					eprintf("Failed to perform move\n");
-					exit(1);
-				}
-				free_move_list(game, list);
-				break;
+		if (options.client) {
+			free_move_list(game, list);
+			struct move move = prompt_for_move(options.display, game, stdout, stdin, &options.display.view_flip, print_board_opt);
+		} else {
+			enum player_type player_type = get_player_type(game->active_color);
+			switch (player_type) {
+				case PLAYER_LOCAL:;
+					free_move_list(game, list);
+					struct move move = prompt_for_move(options.display, game, stdout, stdin, &options.display.view_flip, print_board_opt);
+					if (!perform_move(game, move)) {
+						eprintf("Failed to perform move\n");
+						exit(1);
+					}
+					break;
+				case PLAYER_ENGINE:
+				case PLAYER_SOCKET:;
+					printf("Waiting for %s's move\n", game->active_color == COLOR_WHITE ? "White" : "Black");
+					if (player_type == PLAYER_SOCKET) {
+						struct player *player = get_current_player();
+						if (player->fd == -1) {
+							eprintf("Player socket not connected\n");
+							exit(1);
+						}
+						if (player->client_fd != -1) {
+							eprintf("Player socket already connected\n");
+							exit(1);
+						}
+						if (!(player->client_fd = accept(player->fd, NULL, NULL))) {
+							eprintf("Failed to accept player socket: %s\n", strerror(errno));
+							exit(1);
+						}
+						send_game(game, player->client_fd);
+						send_move(game, player->client_fd);
+						send_turn(game, player->client_fd, options.player1_color);
+					}
+					// pick first legal move
+					printf("Playing %s\n", list->move.notation);
+					if (!perform_move(game, list->move)) {
+						eprintf("Failed to perform move\n");
+						exit(1);
+					}
+					free_move_list(game, list);
+					break;
+			}
 		}
 	}
 	clean_exit = true;

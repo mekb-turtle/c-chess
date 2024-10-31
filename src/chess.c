@@ -311,7 +311,7 @@ struct move_list *add_move(struct game *game, struct move_list *list, struct mov
 	return new;
 }
 
-static void add_move_list_end(struct game *game, struct move move) {
+void add_move_list_end(struct game *game, struct move move) {
 	// add the move to the end of the list
 	if (game->move_list_tail) {
 		game->move_list_tail = add_move(game, game->move_list_tail, move);
@@ -1091,3 +1091,22 @@ end:
 	free_move_list(game, candidates);
 	return result;
 }
+
+struct game export_board(struct game *game) {
+	struct game g = *game;
+	g.move_list = NULL;
+	g.move_list_tail = NULL;
+	g.malloc = NULL;
+	g.free = NULL;
+	return g;
+}
+
+void import_board(struct game *game, struct game import) {
+	struct game g = *game;
+	*game = import;
+	game->move_list = g.move_list;
+	game->move_list_tail = g.move_list_tail;
+	game->malloc = g.malloc;
+	game->free = g.free;
+}
+

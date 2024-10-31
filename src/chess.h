@@ -130,6 +130,7 @@ struct piece *get_piece_xy(struct game *game, int8_t x, int8_t y);
 struct piece *get_piece(struct game *game, struct position pos);
 
 struct move_list *add_move(struct game *game, struct move_list *list, struct move move);
+void add_move_list_end(struct game *game, struct move move);
 
 enum find_move_reason {
 	REASON_SUCCESS, REASON_WIN, REASON_AMBIGUOUS, REASON_ILLEGAL, REASON_SYNTAX, REASON_NONE_FOUND
@@ -146,4 +147,7 @@ struct game *create_board(void *(*malloc_)(size_t), void (*free_)(void *));
 void destroy_board(struct game *game);
 void board_init(struct game *game);
 char *get_move_string(struct game *game);
+
+struct game export_board(struct game *game);
+void import_board(struct game *game, struct game import);
 #endif
